@@ -1,5 +1,5 @@
 import std/[macros, strutils, options, tables, sets]
-import parsejson, llstream
+import jsonx/[parsejson, streams]
 from std/typetraits import isNamedTuple, distinctBase
 
 # serialization
@@ -8,28 +8,28 @@ proc escapeJsonUnquoted*(x: string; s: Stream) =
   ## Appends to ``result``.
   for c in x:
     case c
-    of '\L': llstream.write(s, "\\n")
-    of '\b': llstream.write(s, "\\b")
-    of '\f': llstream.write(s, "\\f")
-    of '\t': llstream.write(s, "\\t")
-    of '\v': llstream.write(s, "\\u000b")
-    of '\r': llstream.write(s, "\\r")
-    of '"': llstream.write(s, "\\\"")
-    of '\0'..'\7': llstream.write(s, "\\u000" & $ord(c))
-    of '\14'..'\31': llstream.write(s, "\\u00" & toHex(ord(c), 2))
-    of '\\': llstream.write(s, "\\\\")
-    else: llstream.write(s, c)
+    of '\L': streams.write(s, "\\n")
+    of '\b': streams.write(s, "\\b")
+    of '\f': streams.write(s, "\\f")
+    of '\t': streams.write(s, "\\t")
+    of '\v': streams.write(s, "\\u000b")
+    of '\r': streams.write(s, "\\r")
+    of '"': streams.write(s, "\\\"")
+    of '\0'..'\7': streams.write(s, "\\u000" & $ord(c))
+    of '\14'..'\31': streams.write(s, "\\u00" & toHex(ord(c), 2))
+    of '\\': streams.write(s, "\\\\")
+    else: streams.write(s, c)
 
 proc escapeJson*(s: Stream; x: string) =
   ## Converts a string `s` to its JSON representation with quotes.
   ## Appends to ``result``.
-  llstream.write(s, "\"")
+  streams.write(s, "\"")
   escapeJsonUnquoted(x, s)
-  llstream.write(s, "\"")
+  streams.write(s, "\"")
 
 proc newJNull*(s: Stream) =
   ## Creates a new JNull.
-  llstream.write(s, "null")
+  streams.write(s, "null")
 
 proc storeJson*(s: Stream; x: string) =
   ## Creates a new JString.
@@ -37,15 +37,15 @@ proc storeJson*(s: Stream; x: string) =
 
 proc storeJson*(s: Stream; b: bool) =
   ## Creates a new JBool.
-  llstream.write(s, if b: "true" else: "false")
+  streams.write(s, if b: "true" else: "false")
 
 proc storeJson*(s: Stream; n: BiggestInt) =
   ## Creates a new JInt.
-  llstream.write(s, $n)
+  streams.write(s, $n)
 
 proc storeJson*(s: Stream; n: float) =
   ## Creates a new JFloat.
-  llstream.write(s, $n)
+  streams.write(s, $n)
 
 proc storeJson*(s: Stream; o: enum) =
   ## Construct a Json that represents the specified enum value as a
@@ -55,32 +55,32 @@ proc storeJson*(s: Stream; o: enum) =
 proc storeJson*[T](s: Stream; elements: openArray[T]) =
   ## Generic constructor for JSON data. Creates a new JArray.
   var comma = false
-  llstream.write(s, "[")
+  streams.write(s, "[")
   for elem in elements:
-    if comma: llstream.write(s, ",")
+    if comma: streams.write(s, ",")
     else: comma = true
     storeJson(s, elem)
-  llstream.write(s, "]")
+  streams.write(s, "]")
 
 proc storeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
   var comma = false
-  llstream.write(s, "[")
+  streams.write(s, "[")
   for elem in o.items:
-    if comma: llstream.write(s, ",")
+    if comma: streams.write(s, ",")
     else: comma = true
     storeJson(s, elem)
-  llstream.write(s, "]")
+  streams.write(s, "]")
 
 proc storeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
   var comma = false
-  llstream.write(s, "{")
+  streams.write(s, "{")
   for k, v in o.pairs:
-    if comma: llstream.write(s, ",")
+    if comma: streams.write(s, ",")
     else: comma = true
     escapeJson(s, k)
-    llstream.write(s, ":")
+    streams.write(s, ":")
     storeJson(s, v)
-  llstream.write(s, "}")
+  streams.write(s, "}")
 
 proc storeJson*(s: Stream; o: ref object) =
   ## Generic constructor for JSON data. Creates a new JObject
@@ -99,28 +99,28 @@ proc storeJson*[T: tuple](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
   when isNamedTuple(T):
-    llstream.write(s, "{")
+    streams.write(s, "{")
     for k, v in o.fieldPairs:
-      if comma: llstream.write(s, ",")
+      if comma: streams.write(s, ",")
       else: comma = true
       escapeJson(s, k)
-      llstream.write(s, ":")
+      streams.write(s, ":")
       storeJson(s, v)
-    llstream.write(s, "}")
+    streams.write(s, "}")
   else:
     {.error: "Tuples with unnamed fields not supported".}
 
 proc storeJson*[T: object](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
-  llstream.write(s, "{")
+  streams.write(s, "{")
   for k, v in o.fieldPairs:
-    if comma: llstream.write(s, ",")
+    if comma: streams.write(s, ",")
     else: comma = true
     escapeJson(s, k)
-    llstream.write(s, ":")
+    streams.write(s, ":")
     storeJson(s, v)
-  llstream.write(s, "}")
+  streams.write(s, "}")
 
 # deserialization
 proc initFromJson*(dst: var string; p: var JsonParser) =

@@ -16,7 +16,7 @@ type
     skString,
     skFile
 
-  Stream* = ref object of RootObj
+  Stream* = ref object
     kind*: StreamKind
     f*: File
     s*: string

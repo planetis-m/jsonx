@@ -1,6 +1,6 @@
-import eminim, std/[enumerate, math, options, sets, tables]
-import parsejson
-import llstream
+import jsonx, std/[enumerate, math, options, sets, tables]
+import jsonx/parsejson
+import jsonx/streams
 
 type
   Foo = ref object
@@ -69,12 +69,12 @@ proc initFromJson(dst: var Baz; p: var JsonParser) =
 proc `==`(a, b: Baz): bool {.borrow.}
 
 proc toJsonString[T](x: T): string =
-  let s = llstream.open("")
+  let s = streams.open("")
   s.storeJson(x)
   result = s.s
 
 proc jsonToFromString[T](x: T): T =
-  let s = llstream.open(toJsonString(x))
+  let s = streams.open(toJsonString(x))
   result = s.jsonTo(typeof x)
 
 block:
@@ -103,10 +103,10 @@ block:
   assert a.v == "hello"
   assert a.t == 1.0
 block:
-  let s = llstream.open("{}")
+  let s = streams.open("{}")
   let a = s.jsonTo(Empty)
 block:
-  let s = llstream.open("""{"x": 42}""")
+  let s = streams.open("""{"x": 42}""")
   let a = s.jsonTo(tuple[x:int])
   assert(a[0] == 42)
 block:
@@ -126,7 +126,7 @@ block:
   #s.setPosition(0)
   #let a = s.jsonTo(Rejected)
 block:
-  let s = llstream.open("""{"va_l": {"vaLue": "stuff"}}""")
+  let s = streams.open("""{"va_l": {"vaLue": "stuff"}}""")
   let a = s.jsonTo(FooBaz)
   assert(a.val[0] == Baz"stuff")
 block:
@@ -168,7 +168,7 @@ block:
               petalWidth: 0.2, species: "setosa"),
     IrisPlant(sepalLength: 4.9, sepalWidth: 3.0, petalLength: 1.4,
               petalWidth: 0.2, species: "setosa")]
-  let s = llstream.open(toJsonString(data))
+  let s = streams.open(toJsonString(data))
   for (i, x) in enumerate(jsonItems(s, IrisPlant)):
     if i == 0:
       assert x.species == "setosa"
@@ -182,14 +182,14 @@ block:
                   Sibling(sex: male, birthYear: 1989, relation: step, alive: true)])]
   block:
     var a: seq[Responder]
-    let s = llstream.open(toJsonString(data))
+    let s = streams.open(toJsonString(data))
     for x in jsonItems(s, Responder):
       a.add x
     assert a.len == 1
     assert a[0].gender == male
     assert a[0].siblings.len == 2
   block:
-    let s = llstream.open(toJsonString(data))
+    let s = streams.open(toJsonString(data))
     var a = @data
     a[0].name = "Janne Smith"
     a[0].gender = female

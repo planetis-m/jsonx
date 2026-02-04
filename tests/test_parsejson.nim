@@ -1,9 +1,9 @@
-import llstream
-import parsejson
+import jsonx/streams
+import jsonx/parsejson
 
 proc tokens(input: string): seq[TokKind] =
   var p: parsejson.JsonParser
-  let s = llstream.open(input)
+  let s = streams.open(input)
   open(p, s, "test.json")
   defer:
     close(p)

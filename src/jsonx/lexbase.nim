@@ -13,7 +13,7 @@
 
 import
   std/strutils
-import llstream
+import jsonx/streams
 
 when defined(nimPreviewSlimSystem):
   import std/assertions
@@ -42,14 +42,14 @@ type
 
 proc close*(L: var BaseLexer) =
   ## closes the base lexer. This closes `L`'s associated stream too.
-  llstream.close(L.input)
+  streams.close(L.input)
 
 proc readDataStrLL(s: Stream, buf: var string, r: Slice[int]): int =
   if r.a < 0 or r.b < r.a:
     return 0
   if buf.len <= r.b:
     buf.setLen(r.b + 1)
-  result = llstream.read(s, addr buf[r.a], r.b - r.a + 1)
+  result = streams.read(s, addr buf[r.a], r.b - r.a + 1)
 
 proc fillBuffer(L: var BaseLexer) =
   var
