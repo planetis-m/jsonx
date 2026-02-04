@@ -1,125 +1,127 @@
-import std/[macros, parsejson, strutils, streams, options, tables, sets, formatfloat]
+import std/[macros, strutils, options, tables, sets]
+import parsejson
+import llstream
 from std/typetraits import isNamedTuple, distinctBase
 
 # serialization
-proc escapeJsonUnquoted*(x: string; s: Stream) =
+proc escapeJsonUnquoted*(x: string; s: PLLStream) =
   ## Converts a string `s` to its JSON representation without quotes.
   ## Appends to ``result``.
   for c in x:
     case c
-    of '\L': s.write("\\n")
-    of '\b': s.write("\\b")
-    of '\f': s.write("\\f")
-    of '\t': s.write("\\t")
-    of '\v': s.write("\\u000b")
-    of '\r': s.write("\\r")
-    of '"': s.write("\\\"")
-    of '\0'..'\7': s.write("\\u000" & $ord(c))
-    of '\14'..'\31': s.write("\\u00" & toHex(ord(c), 2))
-    of '\\': s.write("\\\\")
-    else: s.write(c)
+    of '\L': llStreamWrite(s, "\\n")
+    of '\b': llStreamWrite(s, "\\b")
+    of '\f': llStreamWrite(s, "\\f")
+    of '\t': llStreamWrite(s, "\\t")
+    of '\v': llStreamWrite(s, "\\u000b")
+    of '\r': llStreamWrite(s, "\\r")
+    of '"': llStreamWrite(s, "\\\"")
+    of '\0'..'\7': llStreamWrite(s, "\\u000" & $ord(c))
+    of '\14'..'\31': llStreamWrite(s, "\\u00" & toHex(ord(c), 2))
+    of '\\': llStreamWrite(s, "\\\\")
+    else: llStreamWrite(s, c)
 
-proc escapeJson*(s: Stream; x: string) =
+proc escapeJson*(s: PLLStream; x: string) =
   ## Converts a string `s` to its JSON representation with quotes.
   ## Appends to ``result``.
-  s.write("\"")
+  llStreamWrite(s, "\"")
   escapeJsonUnquoted(x, s)
-  s.write("\"")
+  llStreamWrite(s, "\"")
 
-proc newJNull*(s: Stream) =
+proc newJNull*(s: PLLStream) =
   ## Creates a new JNull.
-  s.write "null"
+  llStreamWrite(s, "null")
 
-proc storeJson*(s: Stream; x: string) =
+proc storeJson*(s: PLLStream; x: string) =
   ## Creates a new JString.
   escapeJson(s, x)
 
-proc storeJson*(s: Stream; b: bool) =
+proc storeJson*(s: PLLStream; b: bool) =
   ## Creates a new JBool.
-  s.write if b: "true" else: "false"
+  llStreamWrite(s, if b: "true" else: "false")
 
-proc storeJson*(s: Stream; n: BiggestInt) =
+proc storeJson*(s: PLLStream; n: BiggestInt) =
   ## Creates a new JInt.
-  s.write $n
+  llStreamWrite(s, $n)
 
-proc storeJson*(s: Stream; n: float) =
+proc storeJson*(s: PLLStream; n: float) =
   ## Creates a new JFloat.
-  s.write $n
+  llStreamWrite(s, $n)
 
-proc storeJson*(s: Stream; o: enum) =
+proc storeJson*(s: PLLStream; o: enum) =
   ## Construct a Json that represents the specified enum value as a
   ## string. Creates a new JString.
   storeJson(s, $o)
 
-proc storeJson*[T](s: Stream; elements: openArray[T]) =
+proc storeJson*[T](s: PLLStream; elements: openArray[T]) =
   ## Generic constructor for JSON data. Creates a new JArray.
   var comma = false
-  s.write "["
+  llStreamWrite(s, "[")
   for elem in elements:
-    if comma: s.write ","
+    if comma: llStreamWrite(s, ",")
     else: comma = true
     storeJson(s, elem)
-  s.write "]"
+  llStreamWrite(s, "]")
 
-proc storeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
+proc storeJson*[T](s: PLLStream; o: SomeSet[T]|set[T]) =
   var comma = false
-  s.write "["
+  llStreamWrite(s, "[")
   for elem in o.items:
-    if comma: s.write ","
+    if comma: llStreamWrite(s, ",")
     else: comma = true
     storeJson(s, elem)
-  s.write "]"
+  llStreamWrite(s, "]")
 
-proc storeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
+proc storeJson*[T](s: PLLStream; o: (Table[string, T]|OrderedTable[string, T])) =
   var comma = false
-  s.write "{"
+  llStreamWrite(s, "{")
   for k, v in o.pairs:
-    if comma: s.write ","
+    if comma: llStreamWrite(s, ",")
     else: comma = true
     escapeJson(s, k)
-    s.write ":"
+    llStreamWrite(s, ":")
     storeJson(s, v)
-  s.write "}"
+  llStreamWrite(s, "}")
 
-proc storeJson*(s: Stream; o: ref object) =
+proc storeJson*(s: PLLStream; o: ref object) =
   ## Generic constructor for JSON data. Creates a new JObject
   if o.isNil:
     s.newJNull()
   else:
     storeJson(s, o[])
 
-proc storeJson*[T](s: Stream; o: Option[T]) =
+proc storeJson*[T](s: PLLStream; o: Option[T]) =
   if isSome(o):
     storeJson(s, get(o))
   else:
     s.newJNull()
 
-proc storeJson*[T: tuple](s: Stream; o: T) =
+proc storeJson*[T: tuple](s: PLLStream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
   when isNamedTuple(T):
-    s.write "{"
+    llStreamWrite(s, "{")
     for k, v in o.fieldPairs:
-      if comma: s.write ","
+      if comma: llStreamWrite(s, ",")
       else: comma = true
       escapeJson(s, k)
-      s.write ":"
+      llStreamWrite(s, ":")
       storeJson(s, v)
-    s.write "}"
+    llStreamWrite(s, "}")
   else:
     {.error: "Tuples with unnamed fields not supported".}
 
-proc storeJson*[T: object](s: Stream; o: T) =
+proc storeJson*[T: object](s: PLLStream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
-  s.write "{"
+  llStreamWrite(s, "{")
   for k, v in o.fieldPairs:
-    if comma: s.write ","
+    if comma: llStreamWrite(s, ",")
     else: comma = true
     escapeJson(s, k)
-    s.write ":"
+    llStreamWrite(s, ":")
     storeJson(s, v)
-  s.write "}"
+  llStreamWrite(s, "}")
 
 # deserialization
 proc initFromJson*(dst: var string; p: var JsonParser) =
@@ -385,8 +387,8 @@ proc initFromJson*[T: object|tuple](dst: var T; p: var JsonParser) =
     discard getTok(p)
   eat(p, tkCurlyRi)
 
-proc jsonTo*[T](s: Stream, t: typedesc[T]): T =
-  ## Unmarshals the specified Stream into the type specified.
+proc jsonTo*[T](s: PLLStream, t: typedesc[T]): T =
+  ## Unmarshals the specified stream into the type specified.
   ##
   ## Known limitations:
   ##
@@ -403,8 +405,8 @@ proc jsonTo*[T](s: Stream, t: typedesc[T]): T =
   finally:
     close(p)
 
-proc loadJson*[T](s: Stream, dst: var T) =
-  ## Unmarshals the specified Stream into the location specified.
+proc loadJson*[T](s: PLLStream, dst: var T) =
+  ## Unmarshals the specified stream into the location specified.
   var p: JsonParser
   open(p, s, "unknown file")
   try:
