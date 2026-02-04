@@ -1,127 +1,126 @@
 import std/[macros, strutils, options, tables, sets]
-import parsejson
-import llstream
+import parsejson, llstream
 from std/typetraits import isNamedTuple, distinctBase
 
 # serialization
-proc escapeJsonUnquoted*(x: string; s: PLLStream) =
+proc escapeJsonUnquoted*(x: string; s: Stream) =
   ## Converts a string `s` to its JSON representation without quotes.
   ## Appends to ``result``.
   for c in x:
     case c
-    of '\L': llStreamWrite(s, "\\n")
-    of '\b': llStreamWrite(s, "\\b")
-    of '\f': llStreamWrite(s, "\\f")
-    of '\t': llStreamWrite(s, "\\t")
-    of '\v': llStreamWrite(s, "\\u000b")
-    of '\r': llStreamWrite(s, "\\r")
-    of '"': llStreamWrite(s, "\\\"")
-    of '\0'..'\7': llStreamWrite(s, "\\u000" & $ord(c))
-    of '\14'..'\31': llStreamWrite(s, "\\u00" & toHex(ord(c), 2))
-    of '\\': llStreamWrite(s, "\\\\")
-    else: llStreamWrite(s, c)
+    of '\L': llstream.write(s, "\\n")
+    of '\b': llstream.write(s, "\\b")
+    of '\f': llstream.write(s, "\\f")
+    of '\t': llstream.write(s, "\\t")
+    of '\v': llstream.write(s, "\\u000b")
+    of '\r': llstream.write(s, "\\r")
+    of '"': llstream.write(s, "\\\"")
+    of '\0'..'\7': llstream.write(s, "\\u000" & $ord(c))
+    of '\14'..'\31': llstream.write(s, "\\u00" & toHex(ord(c), 2))
+    of '\\': llstream.write(s, "\\\\")
+    else: llstream.write(s, c)
 
-proc escapeJson*(s: PLLStream; x: string) =
+proc escapeJson*(s: Stream; x: string) =
   ## Converts a string `s` to its JSON representation with quotes.
   ## Appends to ``result``.
-  llStreamWrite(s, "\"")
+  llstream.write(s, "\"")
   escapeJsonUnquoted(x, s)
-  llStreamWrite(s, "\"")
+  llstream.write(s, "\"")
 
-proc newJNull*(s: PLLStream) =
+proc newJNull*(s: Stream) =
   ## Creates a new JNull.
-  llStreamWrite(s, "null")
+  llstream.write(s, "null")
 
-proc storeJson*(s: PLLStream; x: string) =
+proc storeJson*(s: Stream; x: string) =
   ## Creates a new JString.
   escapeJson(s, x)
 
-proc storeJson*(s: PLLStream; b: bool) =
+proc storeJson*(s: Stream; b: bool) =
   ## Creates a new JBool.
-  llStreamWrite(s, if b: "true" else: "false")
+  llstream.write(s, if b: "true" else: "false")
 
-proc storeJson*(s: PLLStream; n: BiggestInt) =
+proc storeJson*(s: Stream; n: BiggestInt) =
   ## Creates a new JInt.
-  llStreamWrite(s, $n)
+  llstream.write(s, $n)
 
-proc storeJson*(s: PLLStream; n: float) =
+proc storeJson*(s: Stream; n: float) =
   ## Creates a new JFloat.
-  llStreamWrite(s, $n)
+  llstream.write(s, $n)
 
-proc storeJson*(s: PLLStream; o: enum) =
+proc storeJson*(s: Stream; o: enum) =
   ## Construct a Json that represents the specified enum value as a
   ## string. Creates a new JString.
   storeJson(s, $o)
 
-proc storeJson*[T](s: PLLStream; elements: openArray[T]) =
+proc storeJson*[T](s: Stream; elements: openArray[T]) =
   ## Generic constructor for JSON data. Creates a new JArray.
   var comma = false
-  llStreamWrite(s, "[")
+  llstream.write(s, "[")
   for elem in elements:
-    if comma: llStreamWrite(s, ",")
+    if comma: llstream.write(s, ",")
     else: comma = true
     storeJson(s, elem)
-  llStreamWrite(s, "]")
+  llstream.write(s, "]")
 
-proc storeJson*[T](s: PLLStream; o: SomeSet[T]|set[T]) =
+proc storeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
   var comma = false
-  llStreamWrite(s, "[")
+  llstream.write(s, "[")
   for elem in o.items:
-    if comma: llStreamWrite(s, ",")
+    if comma: llstream.write(s, ",")
     else: comma = true
     storeJson(s, elem)
-  llStreamWrite(s, "]")
+  llstream.write(s, "]")
 
-proc storeJson*[T](s: PLLStream; o: (Table[string, T]|OrderedTable[string, T])) =
+proc storeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
   var comma = false
-  llStreamWrite(s, "{")
+  llstream.write(s, "{")
   for k, v in o.pairs:
-    if comma: llStreamWrite(s, ",")
+    if comma: llstream.write(s, ",")
     else: comma = true
     escapeJson(s, k)
-    llStreamWrite(s, ":")
+    llstream.write(s, ":")
     storeJson(s, v)
-  llStreamWrite(s, "}")
+  llstream.write(s, "}")
 
-proc storeJson*(s: PLLStream; o: ref object) =
+proc storeJson*(s: Stream; o: ref object) =
   ## Generic constructor for JSON data. Creates a new JObject
   if o.isNil:
     s.newJNull()
   else:
     storeJson(s, o[])
 
-proc storeJson*[T](s: PLLStream; o: Option[T]) =
+proc storeJson*[T](s: Stream; o: Option[T]) =
   if isSome(o):
     storeJson(s, get(o))
   else:
     s.newJNull()
 
-proc storeJson*[T: tuple](s: PLLStream; o: T) =
+proc storeJson*[T: tuple](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
   when isNamedTuple(T):
-    llStreamWrite(s, "{")
+    llstream.write(s, "{")
     for k, v in o.fieldPairs:
-      if comma: llStreamWrite(s, ",")
+      if comma: llstream.write(s, ",")
       else: comma = true
       escapeJson(s, k)
-      llStreamWrite(s, ":")
+      llstream.write(s, ":")
       storeJson(s, v)
-    llStreamWrite(s, "}")
+    llstream.write(s, "}")
   else:
     {.error: "Tuples with unnamed fields not supported".}
 
-proc storeJson*[T: object](s: PLLStream; o: T) =
+proc storeJson*[T: object](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
-  llStreamWrite(s, "{")
+  llstream.write(s, "{")
   for k, v in o.fieldPairs:
-    if comma: llStreamWrite(s, ",")
+    if comma: llstream.write(s, ",")
     else: comma = true
     escapeJson(s, k)
-    llStreamWrite(s, ":")
+    llstream.write(s, ":")
     storeJson(s, v)
-  llStreamWrite(s, "}")
+  llstream.write(s, "}")
 
 # deserialization
 proc initFromJson*(dst: var string; p: var JsonParser) =
@@ -387,7 +386,7 @@ proc initFromJson*[T: object|tuple](dst: var T; p: var JsonParser) =
     discard getTok(p)
   eat(p, tkCurlyRi)
 
-proc jsonTo*[T](s: PLLStream, t: typedesc[T]): T =
+proc jsonTo*[T](s: Stream, t: typedesc[T]): T =
   ## Unmarshals the specified stream into the type specified.
   ##
   ## Known limitations:
@@ -405,7 +404,7 @@ proc jsonTo*[T](s: PLLStream, t: typedesc[T]): T =
   finally:
     close(p)
 
-proc loadJson*[T](s: PLLStream, dst: var T) =
+proc loadJson*[T](s: Stream, dst: var T) =
   ## Unmarshals the specified stream into the location specified.
   var p: JsonParser
   open(p, s, "unknown file")

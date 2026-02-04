@@ -33,7 +33,7 @@ type
                                  ## this object.
     bufpos*: int                 ## the current position within the buffer
     buf*: string                 ## the buffer itself
-    input: PLLStream             ## the input stream
+    input: Stream             ## the input stream
     lineNumber*: int             ## the current line number
     sentinel: int
     lineStart: int               # index of last line start in buffer
@@ -42,14 +42,14 @@ type
 
 proc close*(L: var BaseLexer) =
   ## closes the base lexer. This closes `L`'s associated stream too.
-  llStreamClose(L.input)
+  llstream.close(L.input)
 
-proc readDataStrLL(s: PLLStream, buf: var string, r: Slice[int]): int =
+proc readDataStrLL(s: Stream, buf: var string, r: Slice[int]): int =
   if r.a < 0 or r.b < r.a:
     return 0
   if buf.len <= r.b:
     buf.setLen(r.b + 1)
-  result = llStreamRead(s, addr buf[r.a], r.b - r.a + 1)
+  result = llstream.read(s, addr buf[r.a], r.b - r.a + 1)
 
 proc fillBuffer(L: var BaseLexer) =
   var
@@ -133,7 +133,7 @@ proc skipUtf8Bom(L: var BaseLexer) =
     inc(L.bufpos, 3)
     inc(L.lineStart, 3)
 
-proc open*(L: var BaseLexer, input: PLLStream, bufLen: int = 8192;
+proc open*(L: var BaseLexer, input: Stream, bufLen: int = 8192;
            refillChars: set[char] = NewLines) =
   ## inits the BaseLexer with a stream to read from.
   assert(bufLen > 0)

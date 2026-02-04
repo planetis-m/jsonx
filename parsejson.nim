@@ -59,7 +59,7 @@ const
     "{", "}", "[", "]", ":", ","
   ]
 
-proc open*(my: var JsonParser, input: PLLStream, filename: string;
+proc open*(my: var JsonParser, input: Stream, filename: string;
            rawStringLiterals = false) =
   ## initializes the parser with an input stream. `Filename` is only used
   ## for nice error messages. If `rawStringLiterals` is true, string literals

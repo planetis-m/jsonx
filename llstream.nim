@@ -11,89 +11,87 @@
 ## Only the required pieces are kept.
 
 type
-  TLLStreamKind* = enum
-    llsNone,
-    llsString,
-    llsFile
+  StreamKind* = enum
+    skNone,
+    skString,
+    skFile
 
-  TLLStream* = object of RootObj
-    kind*: TLLStreamKind
+  Stream* = ref object of RootObj
+    kind*: StreamKind
     f*: File
     s*: string
     rd*: int
 
-  PLLStream* = ref TLLStream
+proc open*(data: sink string): Stream =
+  Stream(kind: skString, s: data)
 
-proc llStreamOpen*(data: sink string): PLLStream =
-  PLLStream(kind: llsString, s: data)
+proc open*(f: File): Stream =
+  Stream(kind: skFile, f: f)
 
-proc llStreamOpen*(f: File): PLLStream =
-  PLLStream(kind: llsFile, f: f)
+proc open*(): Stream =
+  Stream(kind: skNone)
 
-proc llStreamOpen*(): PLLStream =
-  PLLStream(kind: llsNone)
-
-proc llStreamClose*(s: PLLStream) =
+proc close*(s: Stream) =
   case s.kind
-  of llsNone, llsString:
+  of skNone, skString:
     discard
-  of llsFile:
+  of skFile:
     close(s.f)
 
-proc llStreamRead*(s: PLLStream, buf: pointer, bufLen: int): int =
+proc read*(s: Stream, buf: pointer, bufLen: int): int =
   case s.kind
-  of llsNone:
+  of skNone:
     result = 0
-  of llsString:
+  of skString:
     result = min(bufLen, s.s.len - s.rd)
     if result > 0:
       copyMem(buf, addr(s.s[s.rd]), result)
       inc(s.rd, result)
-  of llsFile:
+  of skFile:
     result = readBuffer(s.f, buf, bufLen)
 
-proc llStreamWrite*(s: PLLStream, data: string) =
+proc write*(s: Stream, data: string) =
   case s.kind
-  of llsNone:
+  of skNone:
     discard
-  of llsString:
+  of skString:
     s.s.add(data)
-  of llsFile:
+  of skFile:
     write(s.f, data)
 
-proc llStreamWriteln*(s: PLLStream, data: string) =
-  llStreamWrite(s, data)
-  llStreamWrite(s, "\n")
+proc writeln*(s: Stream, data: string) =
+  write(s, data)
+  write(s, "\n")
 
-proc llStreamWrite*(s: PLLStream, data: char) =
+proc write*(s: Stream, data: char) =
   var c: char
   case s.kind
-  of llsNone:
+  of skNone:
     discard
-  of llsString:
+  of skString:
     s.s.add(data)
-  of llsFile:
+  of skFile:
     c = data
     discard writeBuffer(s.f, addr(c), sizeof(c))
 
-proc llStreamWrite*(s: PLLStream, buf: pointer, buflen: int) =
+proc write*(s: Stream, buf: pointer, buflen: int) =
   case s.kind
-  of llsNone:
+  of skNone:
     discard
-  of llsString:
+  of skString:
     if buflen > 0:
       let start = s.s.len
       s.s.setLen(start + buflen)
       copyMem(addr s.s[start], buf, buflen)
-  of llsFile:
+  of skFile:
     if buflen > 0:
       discard writeBuffer(s.f, buf, buflen)
 
-proc llStreamReadAll*(s: PLLStream): string =
+proc readAll*(s: Stream): string =
   result = ""
   var buf: array[4096, char]
   while true:
-    let n = llStreamRead(s, addr buf[0], buf.len)
+    let n = read(s, addr buf[0], buf.len)
     if n <= 0:
       break
     result.setLen(result.len + n)

@@ -3,7 +3,7 @@ import parsejson
 
 proc tokens(input: string): seq[TokKind] =
   var p: parsejson.JsonParser
-  let s = llStreamOpen(input)
+  let s = llstream.open(input)
   open(p, s, "test.json")
   defer:
     close(p)
