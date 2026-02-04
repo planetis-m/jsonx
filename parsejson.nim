@@ -11,7 +11,9 @@
 ## and exported by the `json` standard library
 ## module, but can also be used in its own right.
 
-import std/[strutils, lexbase, streams, unicode]
+import std/[strutils, unicode]
+import lexbase
+import llstream
 import std/private/decode_helpers
 
 when defined(nimPreviewSlimSystem):
@@ -57,7 +59,7 @@ const
     "{", "}", "[", "]", ":", ","
   ]
 
-proc open*(my: var JsonParser, input: Stream, filename: string;
+proc open*(my: var JsonParser, input: PLLStream, filename: string;
            rawStringLiterals = false) =
   ## initializes the parser with an input stream. `Filename` is only used
   ## for nice error messages. If `rawStringLiterals` is true, string literals
@@ -187,42 +189,6 @@ proc skip(my: var JsonParser) =
   var pos = my.bufpos
   while true:
     case my.buf[pos]
-    of '/':
-      if my.buf[pos+1] == '/':
-        # skip line comment:
-        inc(pos, 2)
-        while true:
-          case my.buf[pos]
-          of '\0':
-            break
-          of '\c':
-            pos = lexbase.handleCR(my, pos)
-            break
-          of '\L':
-            pos = lexbase.handleLF(my, pos)
-            break
-          else:
-            inc(pos)
-      elif my.buf[pos+1] == '*':
-        # skip long comment:
-        inc(pos, 2)
-        while true:
-          case my.buf[pos]
-          of '\0':
-            break
-          of '\c':
-            pos = lexbase.handleCR(my, pos)
-          of '\L':
-            pos = lexbase.handleLF(my, pos)
-          of '*':
-            inc(pos)
-            if my.buf[pos] == '/':
-              inc(pos)
-              break
-          else:
-            inc(pos)
-      else:
-        break
     of ' ', '\t':
       inc(pos)
     of '\c':
