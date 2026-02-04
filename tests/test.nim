@@ -75,8 +75,20 @@ proc toJsonString[T](x: T): string =
 
 proc jsonToFromString[T](x: T): T =
   let s = streams.open(toJsonString(x))
-  result = s.jsonTo(typeof x)
+  result = s.fromJson(typeof x)
 
+block:
+  let data = [1, 2, 3]
+  let s = toJson(data)
+  let a = fromJson(s, typeof data)
+  assert a == data
+block:
+  let data = FooBar(v: "hello", t: 1.0)
+  let s = toJson(data)
+  var dst: FooBar
+  fromJson(s, dst)
+  assert dst.v == data.v
+  assert dst.t == data.t
 block:
   let data = [0, 1, 2, 3, 4, 5, 6]
   let a = jsonToFromString(data)
@@ -104,10 +116,10 @@ block:
   assert a.t == 1.0
 block:
   let s = streams.open("{}")
-  let a = s.jsonTo(Empty)
+  let a = s.fromJson(Empty)
 block:
   let s = streams.open("""{"x": 42}""")
-  let a = s.jsonTo(tuple[x:int])
+  let a = s.fromJson(tuple[x:int])
   assert(a[0] == 42)
 block:
   let data = NotApple
@@ -124,10 +136,10 @@ block:
   #let s = newStringStream()
   #s.storeJson(data)
   #s.setPosition(0)
-  #let a = s.jsonTo(Rejected)
+  #let a = s.fromJson(Rejected)
 block:
   let s = streams.open("""{"va_l": {"vaLue": "stuff"}}""")
-  let a = s.jsonTo(FooBaz)
+  let a = s.fromJson(FooBaz)
   assert(a.val[0] == Baz"stuff")
 block:
   let data = some(Foo(value: 5, next: nil))
@@ -195,7 +207,7 @@ block:
     a[0].gender = female
     a[0].siblings[0].birthYear = 1997
     a[0].siblings.add Sibling()
-    s.loadJson(a)
+    s.fromJson(a)
     assert a[0].name == "John Smith"
     assert a[0].gender == male
     assert a[0].siblings.len == 2

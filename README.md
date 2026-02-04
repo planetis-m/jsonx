@@ -37,7 +37,7 @@ type Person = object
   age: int
 
 let s = streams.open("{\"name\":\"Ada\",\"age\":42}")
-let p = s.jsonTo(Person)
+let p = s.fromJson(Person)
 ```
 
 Iterate array items:

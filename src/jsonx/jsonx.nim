@@ -386,7 +386,7 @@ proc initFromJson*[T: object|tuple](dst: var T; p: var JsonParser) =
     discard getTok(p)
   eat(p, tkCurlyRi)
 
-proc jsonTo*[T](s: Stream, t: typedesc[T]): T =
+proc fromJson*[T](s: Stream, t: typedesc[T]): T =
   ## Unmarshals the specified stream into the type specified.
   ##
   ## Known limitations:
@@ -404,7 +404,7 @@ proc jsonTo*[T](s: Stream, t: typedesc[T]): T =
   finally:
     close(p)
 
-proc loadJson*[T](s: Stream, dst: var T) =
+proc fromJson*[T](s: Stream, dst: var T) =
   ## Unmarshals the specified stream into the location specified.
   var p: JsonParser
   open(p, s, "unknown file")
@@ -442,3 +442,18 @@ macro jsonItems*(x: ForLoopStmt): untyped =
     strmVar = x[1][1]
     body = x[^1]
   result = newBlockStmt(getAst(whileJsonItems(strmVar, iterVar, iterType, body)))
+proc fromJson*[T](input: string, t: typedesc[T]): T =
+  ## Unmarshals the specified string into the type specified.
+  let s = streams.open(input)
+  result = fromJson(s, t)
+
+proc fromJson*[T](input: string, dst: var T) =
+  ## Unmarshals the specified string into the location specified.
+  let s = streams.open(input)
+  fromJson(s, dst)
+
+proc toJson*[T](x: T): string =
+  ## Serializes the specified value to a JSON string.
+  let s = streams.open("")
+  s.storeJson(x)
+  result = s.s
