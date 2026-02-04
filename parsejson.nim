@@ -18,21 +18,7 @@ when defined(nimPreviewSlimSystem):
   import std/assertions
 
 type
-  JsonEventKind* = enum ## enumeration of all events that may occur when parsing
-    jsonError,          ## an error occurred during parsing
-    jsonEof,            ## end of file reached
-    jsonString,         ## a string literal
-    jsonInt,            ## an integer literal
-    jsonFloat,          ## a float literal
-    jsonTrue,           ## the value `true`
-    jsonFalse,          ## the value `false`
-    jsonNull,           ## the value `null`
-    jsonObjectStart,    ## start of an object: the `{` token
-    jsonObjectEnd,      ## end of an object: the `}` token
-    jsonArrayStart,     ## start of an array: the `[` token
-    jsonArrayEnd        ## end of an array: the `]` token
-
-  TokKind* = enum # must be synchronized with TJsonEventKind!
+  TokKind* = enum
     tkError,
     tkEof,
     tkString,
@@ -48,29 +34,9 @@ type
     tkColon,
     tkComma
 
-  JsonError* = enum       ## enumeration that lists all errors that can occur
-    errNone,              ## no error
-    errInvalidToken,      ## invalid token
-    errStringExpected,    ## string expected
-    errColonExpected,     ## `:` expected
-    errCommaExpected,     ## `,` expected
-    errBracketRiExpected, ## `]` expected
-    errCurlyRiExpected,   ## `}` expected
-    errQuoteExpected,     ## `"` or `'` expected
-    errEOC_Expected,      ## `*/` expected
-    errEofExpected,       ## EOF expected
-    errExprExpected       ## expr expected
-
-  ParserState = enum
-    stateEof, stateStart, stateObject, stateArray, stateExpectArrayComma,
-    stateExpectObjectComma, stateExpectColon, stateExpectValue
-
   JsonParser* = object of BaseLexer ## the parser object.
     a*: string
     tok*: TokKind
-    kind: JsonEventKind
-    err: JsonError
-    state: seq[ParserState]
     filename: string
     rawStringLiterals: bool
 
@@ -79,19 +45,6 @@ type
   JsonParsingError* = object of ValueError ## is raised for a JSON error
 
 const
-  errorMessages*: array[JsonError, string] = [
-    "no error",
-    "invalid token",
-    "string expected",
-    "':' expected",
-    "',' expected",
-    "']' expected",
-    "'}' expected",
-    "'\"' or \"'\" expected",
-    "'*/' expected",
-    "EOF expected",
-    "expression expected"
-  ]
   tokToStr: array[TokKind, string] = [
     "invalid token",
     "EOF",
@@ -112,34 +65,12 @@ proc open*(my: var JsonParser, input: Stream, filename: string;
   ## left untouched too.
   lexbase.open(my, input)
   my.filename = filename
-  my.state = @[stateStart]
-  my.kind = jsonError
   my.a = ""
   my.rawStringLiterals = rawStringLiterals
 
 proc close*(my: var JsonParser) {.inline.} =
   ## closes the parser `my` and its associated input stream.
   lexbase.close(my)
-
-proc str*(my: JsonParser): string {.inline.} =
-  ## returns the character data for the events: `jsonInt`, `jsonFloat`,
-  ## `jsonString`
-  assert(my.kind in {jsonInt, jsonFloat, jsonString})
-  return my.a
-
-proc getInt*(my: JsonParser): BiggestInt {.inline.} =
-  ## returns the number for the event: `jsonInt`
-  assert(my.kind == jsonInt)
-  return parseBiggestInt(my.a)
-
-proc getFloat*(my: JsonParser): float {.inline.} =
-  ## returns the number for the event: `jsonFloat`
-  assert(my.kind == jsonFloat)
-  return parseFloat(my.a)
-
-proc kind*(my: JsonParser): JsonEventKind {.inline.} =
-  ## returns the current event type for the JSON parser
-  return my.kind
 
 proc getColumn*(my: JsonParser): int {.inline.} =
   ## get the current column the parser has arrived at.
@@ -152,12 +83,6 @@ proc getLine*(my: JsonParser): int {.inline.} =
 proc getFilename*(my: JsonParser): string {.inline.} =
   ## get the filename of the file that the parser processes.
   result = my.filename
-
-proc errorMsg*(my: JsonParser): string =
-  ## returns a helpful error message for the event `jsonError`
-  assert(my.kind == jsonError)
-  result = "$1($2, $3) Error: $4" % [
-    my.filename, $getLine(my), $getColumn(my), errorMessages[my.err]]
 
 proc errorMsgExpected*(my: JsonParser, e: string): string =
   ## returns an error message "`e` expected" in the same format as the
@@ -183,7 +108,6 @@ proc parseString(my: var JsonParser): TokKind =
   while true:
     case my.buf[pos]
     of '\0':
-      my.err = errQuoteExpected
       result = tkError
       break
     of '"':
@@ -223,19 +147,16 @@ proc parseString(my: var JsonParser): TokKind =
         var pos2 = pos
         var r = parseEscapedUTF16(cstring(my.buf), pos)
         if r < 0:
-          my.err = errInvalidToken
           break
         # Deal with surrogates
         if (r and 0xfc00) == 0xd800:
           if my.buf[pos] != '\\' or my.buf[pos+1] != 'u':
-            my.err = errInvalidToken
             break
           inc(pos, 2)
           var s = parseEscapedUTF16(cstring(my.buf), pos)
           if (s and 0xfc00) == 0xdc00 and s > 0:
             r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
           else:
-            my.err = errInvalidToken
             break
         if my.rawStringLiterals:
           let length = pos - pos2
@@ -288,7 +209,6 @@ proc skip(my: var JsonParser) =
         while true:
           case my.buf[pos]
           of '\0':
-            my.err = errEOC_Expected
             break
           of '\c':
             pos = lexbase.handleCR(my, pos)
@@ -395,123 +315,6 @@ proc getTok*(my: var JsonParser): TokKind =
     result = tkError
   my.tok = result
 
-
-proc next*(my: var JsonParser) =
-  ## retrieves the first/next event. This controls the parser.
-  var tk = getTok(my)
-  var i = my.state.len-1
-  # the following code is a state machine. If we had proper coroutines,
-  # the code could be much simpler.
-  case my.state[i]
-  of stateEof:
-    if tk == tkEof:
-      my.kind = jsonEof
-    else:
-      my.kind = jsonError
-      my.err = errEofExpected
-  of stateStart:
-    # tokens allowed?
-    case tk
-    of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
-      my.state[i] = stateEof # expect EOF next!
-      my.kind = JsonEventKind(ord(tk))
-    of tkBracketLe:
-      my.state.add(stateArray) # we expect any
-      my.kind = jsonArrayStart
-    of tkCurlyLe:
-      my.state.add(stateObject)
-      my.kind = jsonObjectStart
-    of tkEof:
-      my.kind = jsonEof
-    else:
-      my.kind = jsonError
-      my.err = errEofExpected
-  of stateObject:
-    case tk
-    of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
-      my.state.add(stateExpectColon)
-      my.kind = JsonEventKind(ord(tk))
-    of tkBracketLe:
-      my.state.add(stateExpectColon)
-      my.state.add(stateArray)
-      my.kind = jsonArrayStart
-    of tkCurlyLe:
-      my.state.add(stateExpectColon)
-      my.state.add(stateObject)
-      my.kind = jsonObjectStart
-    of tkCurlyRi:
-      my.kind = jsonObjectEnd
-      discard my.state.pop()
-    else:
-      my.kind = jsonError
-      my.err = errCurlyRiExpected
-  of stateArray:
-    case tk
-    of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
-      my.state.add(stateExpectArrayComma) # expect value next!
-      my.kind = JsonEventKind(ord(tk))
-    of tkBracketLe:
-      my.state.add(stateExpectArrayComma)
-      my.state.add(stateArray)
-      my.kind = jsonArrayStart
-    of tkCurlyLe:
-      my.state.add(stateExpectArrayComma)
-      my.state.add(stateObject)
-      my.kind = jsonObjectStart
-    of tkBracketRi:
-      my.kind = jsonArrayEnd
-      discard my.state.pop()
-    else:
-      my.kind = jsonError
-      my.err = errBracketRiExpected
-  of stateExpectArrayComma:
-    case tk
-    of tkComma:
-      discard my.state.pop()
-      next(my)
-    of tkBracketRi:
-      my.kind = jsonArrayEnd
-      discard my.state.pop() # pop stateExpectArrayComma
-      discard my.state.pop() # pop stateArray
-    else:
-      my.kind = jsonError
-      my.err = errBracketRiExpected
-  of stateExpectObjectComma:
-    case tk
-    of tkComma:
-      discard my.state.pop()
-      next(my)
-    of tkCurlyRi:
-      my.kind = jsonObjectEnd
-      discard my.state.pop() # pop stateExpectObjectComma
-      discard my.state.pop() # pop stateObject
-    else:
-      my.kind = jsonError
-      my.err = errCurlyRiExpected
-  of stateExpectColon:
-    case tk
-    of tkColon:
-      my.state[i] = stateExpectValue
-      next(my)
-    else:
-      my.kind = jsonError
-      my.err = errColonExpected
-  of stateExpectValue:
-    case tk
-    of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
-      my.state[i] = stateExpectObjectComma
-      my.kind = JsonEventKind(ord(tk))
-    of tkBracketLe:
-      my.state[i] = stateExpectObjectComma
-      my.state.add(stateArray)
-      my.kind = jsonArrayStart
-    of tkCurlyLe:
-      my.state[i] = stateExpectObjectComma
-      my.state.add(stateObject)
-      my.kind = jsonObjectStart
-    else:
-      my.kind = jsonError
-      my.err = errExprExpected
 
 proc raiseParseErr*(p: JsonParser, msg: string) {.noinline, noreturn.} =
   ## raises an `EJsonParsingError` exception.
