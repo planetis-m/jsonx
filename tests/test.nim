@@ -61,6 +61,27 @@ type
     birthYear: int
     relation: Relation
     alive: bool
+  ImageUrl = object
+    url: string
+  ContentItem = object
+    `type`: string
+    image_url: Option[ImageUrl]
+    text: Option[string]
+  ChatMessage = object
+    role: string
+    content: seq[ContentItem]
+  ChatRequest = object
+    model: string
+    max_tokens: int
+    messages: seq[ChatMessage]
+  ChatMessageOut = object
+    role: string
+    content: string
+  ChatChoice = object
+    index: int
+    message: ChatMessageOut
+  ChatResponse = object
+    choices: seq[ChatChoice]
 
 proc initFromJson(dst: var Baz; p: var JsonParser) =
   var tmp: string
@@ -89,6 +110,49 @@ block:
   fromJson(s, dst)
   assert dst.v == data.v
   assert dst.t == data.t
+block:
+  let s = """{"value": 7, "next": null}"""
+  var dst: Option[Foo]
+  fromJson(s, dst)
+  assert dst.isSome
+  assert dst.get.value == 7
+  assert dst.get.next.isNil
+block:
+  let b64 = "use some random values"
+  let request = ChatRequest(
+    model: "allenai/olmOCR-2-7B-1025",
+    max_tokens: 4092,
+    messages: @[
+      ChatMessage(
+        role: "user",
+        content: @[
+          ContentItem(
+            `type`: "text",
+            image_url: none(ImageUrl),
+            text: some("Extract the text exactly.")
+          ),
+          ContentItem(
+            `type`: "image_url",
+            image_url: some(ImageUrl(url: "data:image/jpeg;base64," & b64)),
+            text: none(string)
+          )
+        ]
+      )
+    ]
+  )
+  let reqJson = toJsonString(request)
+  let reqBack = fromJson(reqJson, ChatRequest)
+  let reqJsonBack = toJsonString(reqBack)
+
+  let respJson = """{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}"""
+  let resp = fromJson(respJson, ChatResponse)
+  let respJsonNorm = toJsonString(resp)
+  let respBack = fromJson(respJsonNorm, ChatResponse)
+  let respJsonBack = toJsonString(respBack)
+
+  doAssert reqJson.len > 0
+  doAssert reqJsonBack == reqJson
+  doAssert respJsonBack == respJsonNorm
 block:
   let data = [0, 1, 2, 3, 4, 5, 6]
   let a = jsonToFromString(data)

@@ -244,6 +244,7 @@ proc initFromJson*[T](dst: var Option[T]; p: var JsonParser) =
     dst = some(tmp)
   else:
     dst = none[T]()
+    discard getTok(p)
 
 proc detectIncompatibleType(typeExpr: NimNode) =
   if typeExpr.kind == nnkTupleConstr:
@@ -415,6 +416,22 @@ proc fromJson*[T](s: Stream, dst: var T) =
   finally:
     close(p)
 
+proc fromJson*[T](input: string, t: typedesc[T]): T =
+  ## Unmarshals the specified string into the type specified.
+  let s = streams.open(input)
+  result = fromJson(s, t)
+
+proc fromJson*[T](input: string, dst: var T) =
+  ## Unmarshals the specified string into the location specified.
+  let s = streams.open(input)
+  fromJson(s, dst)
+
+proc toJson*[T](x: T): string =
+  ## Serializes the specified value to a JSON string.
+  let s = streams.open("")
+  s.storeJson(x)
+  result = s.s
+
 template whileJsonItems(s, x, xType, body: untyped) =
   var p: JsonParser
   open(p, s, "unknown file")
@@ -442,18 +459,3 @@ macro jsonItems*(x: ForLoopStmt): untyped =
     strmVar = x[1][1]
     body = x[^1]
   result = newBlockStmt(getAst(whileJsonItems(strmVar, iterVar, iterType, body)))
-proc fromJson*[T](input: string, t: typedesc[T]): T =
-  ## Unmarshals the specified string into the type specified.
-  let s = streams.open(input)
-  result = fromJson(s, t)
-
-proc fromJson*[T](input: string, dst: var T) =
-  ## Unmarshals the specified string into the location specified.
-  let s = streams.open(input)
-  fromJson(s, dst)
-
-proc toJson*[T](x: T): string =
-  ## Serializes the specified value to a JSON string.
-  let s = streams.open("")
-  s.storeJson(x)
-  result = s.s
