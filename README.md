@@ -4,29 +4,39 @@ jsonx is a lightweight JSON serializer/deserializer for Nim with a small, fast p
 It includes:
 - A minimal streaming layer in `jsonx/streams`.
 - A JSON lexer/parser in `jsonx/parsejson`.
-- A macro-based object mapper and serializer in `jsonx/jsonx`.
+- A macro-based object mapper and serializer in `jsonx` (top-level module).
 
 ## Layout
 - `src/jsonx/streams.nim`: minimal stream API used by the parser.
 - `src/jsonx/lexbase.nim`: lexer base with buffering.
 - `src/jsonx/parsejson.nim`: JSON tokenizer + parser.
-- `src/jsonx/jsonx.nim`: serializer + object mapping.
+- `src/jsonx.nim`: serializer + object mapping.
 - `tests/`: test suite.
 
 ## Usage
 
-Serialize:
+Serialize to a string:
 
 ```nim
 import jsonx
 import jsonx/streams
 
-let s = streams.open("")
-s.storeJson(%*{"hello": "world"})
-let out = s.s
+let out = toJson((hello: "world", answer: 42))
 ```
 
-Deserialize:
+Deserialize from a string:
+
+```nim
+import jsonx
+
+type Person = object
+  name: string
+  age: int
+
+let p = fromJson("{\"name\":\"Ada\",\"age\":42}", Person)
+```
+
+Deserialize from a stream:
 
 ```nim
 import jsonx
@@ -37,7 +47,7 @@ type Person = object
   age: int
 
 let s = streams.open("{\"name\":\"Ada\",\"age\":42}")
-let p = s.fromJson(Person)
+let p = fromJson(s, Person)
 ```
 
 Iterate array items:
@@ -47,7 +57,7 @@ import jsonx
 import jsonx/streams
 
 let s = streams.open("[{\"name\":\"A\"},{\"name\":\"B\"}]")
-for item in jsonItems(s, type(Person)):
+for item in jsonItems(s, Person):
   discard
 ```
 
