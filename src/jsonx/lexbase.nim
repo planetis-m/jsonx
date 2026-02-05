@@ -33,7 +33,7 @@ type
                                  ## this object.
     bufpos*: int                 ## the current position within the buffer
     buf*: string                 ## the buffer itself
-    input: Stream             ## the input stream
+    input: Stream                ## the input stream
     lineNumber*: int             ## the current line number
     sentinel: int
     lineStart: int               # index of last line start in buffer

@@ -286,7 +286,7 @@ template readFieldsInner(parser, body) =
     discard getTok(parser)
 
 template raiseWrongKey(parser) =
-  when defined(emiLenient):
+  when defined(jsonxLenient):
     discard getTok(parser)
     eat(parser, tkColon)
     skipJson(parser)
