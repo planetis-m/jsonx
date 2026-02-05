@@ -50,6 +50,63 @@ let s = streams.open("{\"name\":\"Ada\",\"age\":42}")
 let p = fromJson(s, Person)
 ```
 
+Write to a stream / read from a parser:
+
+```nim
+import jsonx
+import jsonx/streams
+
+type Person = object
+  name: string
+  age: int
+
+let s = streams.open("")
+let p = Person(name: "Ada", age: 42)
+s.writeJson(p)
+
+var parsed: Person
+var parser: JsonParser
+open(parser, streams.open(s.s), "inline")
+discard getTok(parser)
+readJson(parsed, parser)
+```
+
+Custom read/write for your own types:
+
+```nim
+# This data structure is like a Table[int, T],
+# we resort to using arrays for the (key, value) pairs.
+
+proc writeJson*[T](s: Stream; a: SparseSet[T]) =
+  s.write "["
+  var comma = false
+  for e, val in a.pairs:
+    if comma: s.write ","
+    else: comma = true
+    s.write "["
+    writeJson(s, e)
+    s.write ","
+    writeJson(s, val)
+    s.write "]"
+  s.write "]"
+
+proc readJson*[T](dst: var SparseSet[T]; p: var JsonParser) =
+  eat(p, tkBracketLe)
+  dst = initSparseSet[T]()
+  while p.tok != tkBracketRi:
+    eat(p, tkBracketLe)
+    var e: Entity
+    readJson(e, p)
+    eat(p, tkComma)
+    var val: T
+    readJson(val, p)
+    dst[e] = val
+    eat(p, tkBracketRi)
+    if p.tok != tkComma: break
+    discard getTok(p)
+  eat(p, tkBracketRi)
+```
+
 Iterate array items:
 
 ```nim

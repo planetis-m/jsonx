@@ -83,15 +83,15 @@ type
   ChatResponse = object
     choices: seq[ChatChoice]
 
-proc initFromJson(dst: var Baz; p: var JsonParser) =
+proc readJson(dst: var Baz; p: var JsonParser) =
   var tmp: string
-  initFromJson(tmp, p)
+  readJson(tmp, p)
   dst = Baz(tmp)
 proc `==`(a, b: Baz): bool {.borrow.}
 
 proc toJsonString[T](x: T): string =
   let s = streams.open("")
-  s.storeJson(x)
+  s.writeJson(x)
   result = s.s
 
 proc jsonToFromString[T](x: T): T =
@@ -110,6 +110,18 @@ block:
   fromJson(s, dst)
   assert dst.v == data.v
   assert dst.t == data.t
+block:
+  let data = (ref IrisPlant)(
+    sepalLength: 5.1,
+    sepalWidth: 3.5,
+    petalLength: 1.4,
+    petalWidth: 0.2,
+    species: "setosa"
+  )
+  let s = toJson(data)
+  var dst: ref IrisPlant
+  fromJson(s, dst)
+  assert dst[] == data[]
 block:
   let s = """{"value": 7, "next": null}"""
   var dst: Option[Foo]
@@ -198,7 +210,7 @@ block:
 #block:
   #let data = Rejected(val: (1,))
   #let s = newStringStream()
-  #s.storeJson(data)
+  #s.writeJson(data)
   #s.setPosition(0)
   #let a = s.fromJson(Rejected)
 block:

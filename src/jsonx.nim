@@ -27,51 +27,51 @@ proc escapeJson*(s: Stream; x: string) =
   escapeJsonUnquoted(x, s)
   streams.write(s, "\"")
 
-proc newJNull*(s: Stream) =
+proc writeJsonNull*(s: Stream) =
   ## Creates a new JNull.
   streams.write(s, "null")
 
-proc storeJson*(s: Stream; x: string) =
+proc writeJson*(s: Stream; x: string) =
   ## Creates a new JString.
   escapeJson(s, x)
 
-proc storeJson*(s: Stream; b: bool) =
+proc writeJson*(s: Stream; b: bool) =
   ## Creates a new JBool.
   streams.write(s, if b: "true" else: "false")
 
-proc storeJson*(s: Stream; n: BiggestInt) =
+proc writeJson*(s: Stream; n: BiggestInt) =
   ## Creates a new JInt.
   streams.write(s, $n)
 
-proc storeJson*(s: Stream; n: float) =
+proc writeJson*(s: Stream; n: float) =
   ## Creates a new JFloat.
   streams.write(s, $n)
 
-proc storeJson*(s: Stream; o: enum) =
+proc writeJson*(s: Stream; o: enum) =
   ## Construct a Json that represents the specified enum value as a
   ## string. Creates a new JString.
-  storeJson(s, $o)
+  writeJson(s, $o)
 
-proc storeJson*[T](s: Stream; elements: openArray[T]) =
+proc writeJson*[T](s: Stream; elements: openArray[T]) =
   ## Generic constructor for JSON data. Creates a new JArray.
   var comma = false
   streams.write(s, "[")
   for elem in elements:
     if comma: streams.write(s, ",")
     else: comma = true
-    storeJson(s, elem)
+    writeJson(s, elem)
   streams.write(s, "]")
 
-proc storeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
+proc writeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
   var comma = false
   streams.write(s, "[")
   for elem in o.items:
     if comma: streams.write(s, ",")
     else: comma = true
-    storeJson(s, elem)
+    writeJson(s, elem)
   streams.write(s, "]")
 
-proc storeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
+proc writeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
   var comma = false
   streams.write(s, "{")
   for k, v in o.pairs:
@@ -79,23 +79,23 @@ proc storeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
     else: comma = true
     escapeJson(s, k)
     streams.write(s, ":")
-    storeJson(s, v)
+    writeJson(s, v)
   streams.write(s, "}")
 
-proc storeJson*(s: Stream; o: ref object) =
+proc writeJson*(s: Stream; o: ref object) =
   ## Generic constructor for JSON data. Creates a new JObject
   if o.isNil:
-    s.newJNull()
+    s.writeJsonNull()
   else:
-    storeJson(s, o[])
+    writeJson(s, o[])
 
-proc storeJson*[T](s: Stream; o: Option[T]) =
+proc writeJson*[T](s: Stream; o: Option[T]) =
   if isSome(o):
-    storeJson(s, get(o))
+    writeJson(s, get(o))
   else:
-    s.newJNull()
+    s.writeJsonNull()
 
-proc storeJson*[T: tuple](s: Stream; o: T) =
+proc writeJson*[T: tuple](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
   when isNamedTuple(T):
@@ -105,12 +105,12 @@ proc storeJson*[T: tuple](s: Stream; o: T) =
       else: comma = true
       escapeJson(s, k)
       streams.write(s, ":")
-      storeJson(s, v)
+      writeJson(s, v)
     streams.write(s, "}")
   else:
     {.error: "Tuples with unnamed fields not supported".}
 
-proc storeJson*[T: object](s: Stream; o: T) =
+proc writeJson*[T: object](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
   streams.write(s, "{")
@@ -119,11 +119,11 @@ proc storeJson*[T: object](s: Stream; o: T) =
     else: comma = true
     escapeJson(s, k)
     streams.write(s, ":")
-    storeJson(s, v)
+    writeJson(s, v)
   streams.write(s, "}")
 
 # deserialization
-proc initFromJson*(dst: var string; p: var JsonParser) =
+proc readJson*(dst: var string; p: var JsonParser) =
   if p.tok == tkNull:
     dst = ""
     discard getTok(p)
@@ -133,7 +133,7 @@ proc initFromJson*(dst: var string; p: var JsonParser) =
   else:
     raiseParseErr(p, "string or null")
 
-proc initFromJson*(dst: var char; p: var JsonParser) =
+proc readJson*(dst: var char; p: var JsonParser) =
   if p.tok == tkString and len(p.a) == 1:
     dst = p.a[0]
     discard getTok(p)
@@ -143,7 +143,7 @@ proc initFromJson*(dst: var char; p: var JsonParser) =
   else:
     raiseParseErr(p, "string of length 1 or int for a char")
 
-proc initFromJson*(dst: var bool; p: var JsonParser) =
+proc readJson*(dst: var bool; p: var JsonParser) =
   case p.tok
   of tkTrue:
     dst = true
@@ -154,14 +154,14 @@ proc initFromJson*(dst: var bool; p: var JsonParser) =
   else:
     raiseParseErr(p, "'true' or 'false' for a bool")
 
-proc initFromJson*[T: SomeInteger](dst: var T; p: var JsonParser) =
+proc readJson*[T: SomeInteger](dst: var T; p: var JsonParser) =
   if p.tok == tkInt:
     dst = T(parseInt(p.a))
     discard getTok(p)
   else:
     raiseParseErr(p, "int")
 
-proc initFromJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
+proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
   if p.tok == tkFloat:
     dst = T(parseFloat(p.a))
     discard getTok(p)
@@ -171,7 +171,7 @@ proc initFromJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
   else:
     raiseParseErr(p, "float or int")
 
-proc initFromJson*[T: enum](dst: var T; p: var JsonParser) =
+proc readJson*[T: enum](dst: var T; p: var JsonParser) =
   if p.tok == tkString:
     dst = parseEnum[T](p.a)
     discard getTok(p)
@@ -181,22 +181,22 @@ proc initFromJson*[T: enum](dst: var T; p: var JsonParser) =
   else:
     raiseParseErr(p, "string or int for a enum")
 
-proc initFromJson*[T](dst: var seq[T]; p: var JsonParser) =
+proc readJson*[T](dst: var seq[T]; p: var JsonParser) =
   eat(p, tkBracketLe)
   dst.setLen(0)
   while p.tok != tkBracketRi:
     var tmp: T
-    initFromJson(tmp, p)
+    readJson(tmp, p)
     dst.add(tmp)
     if p.tok != tkComma: break
     discard getTok(p)
   eat(p, tkBracketRi)
 
-proc initFromJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
+proc readJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
   eat(p, tkBracketLe)
   var i = int(low(dst))
   while p.tok != tkBracketRi:
-    initFromJson(dst[S(i)], p)
+    readJson(dst[S(i)], p)
     inc(i)
     if p.tok != tkComma: break
     discard getTok(p)
@@ -204,17 +204,17 @@ proc initFromJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
     #raise newException(RangeDefect, "array not filled")
   eat(p, tkBracketRi)
 
-proc initFromJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
+proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
   eat(p, tkBracketLe)
   while p.tok != tkBracketRi:
     var tmp: T
-    initFromJson(tmp, p)
+    readJson(tmp, p)
     dst.incl(tmp)
     if p.tok != tkComma: break
     discard getTok(p)
   eat(p, tkBracketRi)
 
-proc initFromJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: var JsonParser) =
+proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: var JsonParser) =
   eat(p, tkCurlyLe)
   while p.tok != tkCurlyRi:
     if p.tok != tkString:
@@ -222,25 +222,25 @@ proc initFromJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: va
     var key = p.a
     discard getTok(p)
     eat(p, tkColon)
-    initFromJson(mgetOrPut(dst, key, default(T)), p)
+    readJson(mgetOrPut(dst, key, default(T)), p)
     if p.tok != tkComma: break
     discard getTok(p)
   eat(p, tkCurlyRi)
 
-proc initFromJson*[T](dst: var ref T; p: var JsonParser) =
+proc readJson*[T](dst: var ref T; p: var JsonParser) =
   if p.tok == tkNull:
     dst = nil
     discard getTok(p)
   elif p.tok == tkCurlyLe:
     new(dst)
-    initFromJson(dst[], p)
+    readJson(dst[], p)
   else:
     raiseParseErr(p, "object or null")
 
-proc initFromJson*[T](dst: var Option[T]; p: var JsonParser) =
+proc readJson*[T](dst: var Option[T]; p: var JsonParser) =
   if p.tok != tkNull:
     var tmp: T
-    initFromJson(tmp, p)
+    readJson(tmp, p)
     dst = some(tmp)
   else:
     dst = none[T]()
@@ -295,13 +295,13 @@ template raiseWrongKey(parser) =
 template getFieldValue(parser, tmpSym, fieldSym) =
   discard getTok(parser)
   eat(parser, tkColon)
-  initFromJson(tmpSym.fieldSym, parser)
+  readJson(tmpSym.fieldSym, parser)
 
 template getKindValue(parser, tmpSym, kindSym, kindType) =
   discard getTok(parser)
   eat(parser, tkColon)
   var kindTmp: kindType
-  initFromJson(kindTmp, parser)
+  readJson(kindTmp, parser)
   tmpSym = (typeof tmpSym)(kindSym: kindTmp)
 
 template caseANormalized: untyped =
@@ -377,7 +377,7 @@ macro assignObjectImpl(dst: typed; parser: JsonParser): untyped =
     foldObjectBody(typeSym.getTypeImpl, dst, parser)
   if x.kind != nnkNone: result.add x
 
-proc initFromJson*[T: object|tuple](dst: var T; p: var JsonParser) =
+proc readJson*[T: object|tuple](dst: var T; p: var JsonParser) =
   eat(p, tkCurlyLe)
   while p.tok != tkCurlyRi:
     if p.tok != tkString:
@@ -400,7 +400,7 @@ proc fromJson*[T](s: Stream, t: typedesc[T]): T =
   open(p, s, "unknown file")
   try:
     discard getTok(p)
-    initFromJson(result, p)
+    readJson(result, p)
     eat(p, tkEof)
   finally:
     close(p)
@@ -411,7 +411,7 @@ proc fromJson*[T](s: Stream, dst: var T) =
   open(p, s, "unknown file")
   try:
     discard getTok(p)
-    initFromJson(dst, p)
+    readJson(dst, p)
     eat(p, tkEof)
   finally:
     close(p)
@@ -429,7 +429,7 @@ proc fromJson*[T](input: string, dst: var T) =
 proc toJson*[T](x: T): string =
   ## Serializes the specified value to a JSON string.
   let s = streams.open("")
-  s.storeJson(x)
+  s.writeJson(x)
   result = s.s
 
 template whileJsonItems(s, x, xType, body: untyped) =
@@ -440,7 +440,7 @@ template whileJsonItems(s, x, xType, body: untyped) =
     eat(p, tkBracketLe)
     while p.tok != tkBracketRi:
       var x: xType
-      initFromJson(x, p)
+      readJson(x, p)
       body
       if p.tok != tkComma: break
       discard getTok(p)
