@@ -96,9 +96,9 @@ proc writeJson*[T](s: Stream; o: Option[T]) =
     s.writeJsonNull()
 
 proc writeJson*[T: tuple](s: Stream; o: T) =
-  ## Generic constructor for JSON data. Creates a new JObject
-  var comma = false
+  ## Generic constructor for JSON data. Creates a new JObject/JArray.
   when isNamedTuple(T):
+    var comma = false
     streams.write(s, "{")
     for k, v in o.fieldPairs:
       if comma: streams.write(s, ",")
@@ -108,7 +108,13 @@ proc writeJson*[T: tuple](s: Stream; o: T) =
       writeJson(s, v)
     streams.write(s, "}")
   else:
-    {.error: "Tuples with unnamed fields not supported".}
+    var comma = false
+    streams.write(s, "[")
+    for v in o.fields:
+      if comma: streams.write(s, ",")
+      else: comma = true
+      writeJson(s, v)
+    streams.write(s, "]")
 
 proc writeJson*[T: object](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
@@ -246,10 +252,6 @@ proc readJson*[T](dst: var Option[T]; p: var JsonParser) =
     dst = none[T]()
     discard getTok(p)
 
-proc detectIncompatibleType(typeExpr: NimNode) =
-  if typeExpr.kind == nnkTupleConstr:
-    error("Use a named tuple instead of: " & typeExpr.repr)
-
 proc skipJson(p: var JsonParser) =
   case p.tok
   of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
@@ -320,8 +322,6 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   of nnkIdentDefs:
     expectLen(typeNode, 3)
     let fieldSym = typeNode[0]
-    let fieldType = typeNode[1]
-    detectIncompatibleType(fieldType)
     result = nnkOfBranch.newTree(newLit(nimIdentNormalize(fieldSym.strVal)),
         getAst(getFieldValue(parser, tmpSym, fieldSym)))
   of nnkRecCase:
@@ -371,13 +371,12 @@ macro assignObjectImpl(dst: typed; parser: JsonParser): untyped =
   let typeSym = getTypeInst(dst)
   result = newStmtList()
   let x = if typeSym.kind in {nnkTupleTy, nnkTupleConstr}:
-    detectIncompatibleType(typeSym)
     foldObjectBody(typeSym, dst, parser)
   else:
     foldObjectBody(typeSym.getTypeImpl, dst, parser)
   if x.kind != nnkNone: result.add x
 
-proc readJson*[T: object|tuple](dst: var T; p: var JsonParser) =
+proc readJson*[T: object](dst: var T; p: var JsonParser) =
   eat(p, tkCurlyLe)
   while p.tok != tkCurlyRi:
     if p.tok != tkString:
@@ -386,6 +385,30 @@ proc readJson*[T: object|tuple](dst: var T; p: var JsonParser) =
     if p.tok != tkComma: break
     discard getTok(p)
   eat(p, tkCurlyRi)
+
+proc readJson*[T: tuple](dst: var T; p: var JsonParser) =
+  when isNamedTuple(T):
+    eat(p, tkCurlyLe)
+    while p.tok != tkCurlyRi:
+      if p.tok != tkString:
+        raiseParseErr(p, "string literal as key")
+      assignObjectImpl(dst, p)
+      if p.tok != tkComma: break
+      discard getTok(p)
+    eat(p, tkCurlyRi)
+  else:
+    eat(p, tkBracketLe)
+    for v in dst.fields:
+      if p.tok == tkBracketRi:
+        raiseParseErr(p, "tuple element")
+      readJson(v, p)
+      if p.tok == tkComma:
+        discard getTok(p)
+      elif p.tok != tkBracketRi:
+        raiseParseErr(p, "']' or ','")
+    if p.tok != tkBracketRi:
+      raiseParseErr(p, "']'")
+    eat(p, tkBracketRi)
 
 proc fromJson*[T](s: Stream, t: typedesc[T]): T =
   ## Unmarshals the specified stream into the type specified.

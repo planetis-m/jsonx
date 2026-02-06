@@ -186,6 +186,18 @@ block:
   let a = jsonToFromString(data)
   assert a == data
 block:
+  let data = (1, "x", true)
+  let s = toJson(data)
+  assert s == """[1,"x",true]"""
+  let a = fromJson(s, typeof data)
+  assert a == data
+block:
+  let data = ()
+  let s = toJson(data)
+  assert s == "[]"
+  let a = fromJson(s, typeof data)
+  assert a == data
+block:
   let data = FooBar(v: "hello", t: 1.0)
   let a = jsonToFromString(data)
   assert a.v == "hello"
@@ -207,12 +219,24 @@ block:
   data.incl Orange
   let a = jsonToFromString(data)
   assert(a == data)
-#block:
-  #let data = Rejected(val: (1,))
-  #let s = newStringStream()
-  #s.writeJson(data)
-  #s.setPosition(0)
-  #let a = s.fromJson(Rejected)
+block:
+  let data = Rejected(val: (1,))
+  let s = toJsonString(data)
+  assert s == """{"val":[1]}"""
+  let a = fromJson(s, Rejected)
+  assert a == data
+block:
+  doAssertRaises(JsonParsingError):
+    var x: (int, string)
+    fromJson("[1]", x)
+block:
+  doAssertRaises(JsonParsingError):
+    var x: (int, string)
+    fromJson("""[1,"x",true]""", x)
+block:
+  doAssertRaises(JsonParsingError):
+    var x: tuple[]
+    fromJson("[1]", x)
 block:
   let s = streams.open("""{"va_l": {"vaLue": "stuff"}}""")
   let a = s.fromJson(FooBaz)
