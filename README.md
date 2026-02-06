@@ -133,7 +133,8 @@ Build flag: `-d:danger`
 
 | Benchmark | Command | Time | Memory |
 | --- | --- | --- | --- |
-| `std/json` | `nim c -d:danger -r bench/benchmark.nim` | `1.601014706s` | `20KiB` |
-| `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.589890699s` | `0B` |
+| `std/json` | `nim c -d:danger -r bench/benchmark.nim` | `1.505616955s` | `20KiB` |
+| `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.53223224s` | `0B` |
+| `jsony` | `nim c -d:danger -r bench/benchmark_jsony.nim` | `0.636185774s` | `0B` |
 
-`jsonx` is about `2.71x` faster than `std/json` in this run.
+In this run, `jsonx` is about `2.83x` faster than `std/json` and `jsony` is about `2.37x` faster than `std/json`. `jsonx` is about `1.20x` faster than `jsony`.
