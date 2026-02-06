@@ -126,6 +126,7 @@ Run from the repo root:
 nim c -r tests/test.nim
 nim c -r tests/test_parsejson.nim
 nim c -r tests/test_numbers.nim
+nim c -r tests/test_compliance.nim
 ```
 
 ## Benchmarks
