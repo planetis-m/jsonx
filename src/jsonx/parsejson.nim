@@ -258,6 +258,7 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   my.i = 0'i64
   if my.buf[i] in Sign:
     i.inc
+  let intStart = i
   while my.buf[i] != '\0':
     if my.buf[i] notin Digits:
       if my.buf[i] != '.' or pnt >= 0:
@@ -271,6 +272,8 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
       p10.inc
     i.inc
     nD.inc
+  if my.buf[intStart] == '0' and nD > 1 and pnt != 1:
+    return tkError
   if my.buf[startPos] == '-':
     my.i = -my.i
   if pnt < 0:
@@ -283,9 +286,12 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
     let i0 = i
     if my.buf[i] in Sign:
       i.inc
+    let expStart = i
     while my.buf[i] in Digits:
       exp = 10 * exp + my.buf[i].i64
       i.inc
+    if i == expStart:
+      return tkError
     if my.buf[i0] == '-':
       exp = -exp
   elif noDot:
