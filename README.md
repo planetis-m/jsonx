@@ -133,7 +133,7 @@ Build flag: `-d:danger`
 
 | Benchmark | Command | Time | Memory |
 | --- | --- | --- | --- |
-| `std/json` | `nim c -d:danger -r --import:std/times --import:std/strutils bench/benchmark.nim` | `1.601014706s` | `20KiB` |
+| `std/json` | `nim c -d:danger -r bench/benchmark.nim` | `1.601014706s` | `20KiB` |
 | `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.589890699s` | `0B` |
 
 `jsonx` is about `2.71x` faster than `std/json` in this run.
