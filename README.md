@@ -129,9 +129,11 @@ nim c -r tests/test_parsejson.nim
 
 ## Benchmarks
 
-| Parser | Command | Time | Memory |
-| --- | --- | --- | --- |
-| `std/json` | `nim c -r --import:std/times --import:std/strutils bench/benchmark.nim` | `6.71515575s` | `20KiB` |
-| `jsonx` | `nim c -r bench/benchmark_jsonx.nim` | `3.337836258s` | `0B` |
+Build flag: `-d:danger`
 
-On this run, `jsonx` was about `2.0x` faster than `std/json` and reported lower occupied memory.
+| Benchmark | Command | Time | Memory |
+| --- | --- | --- | --- |
+| `std/json` | `nim c -d:danger -r --import:std/times --import:std/strutils bench/benchmark.nim` | `1.601014706s` | `20KiB` |
+| `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.589890699s` | `0B` |
+
+`jsonx` is about `2.71x` faster than `std/json` in this run.

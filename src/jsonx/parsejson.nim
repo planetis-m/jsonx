@@ -37,6 +37,9 @@ type
 
   JsonParser* = object of BaseLexer ## the parser object.
     a*: string
+    i: int64
+    f: float
+    giant: bool
     tok*: TokKind
     filename: string
     rawStringLiterals: bool
@@ -72,6 +75,23 @@ proc open*(my: var JsonParser, input: Stream, filename: string;
 proc close*(my: var JsonParser) {.inline.} =
   ## closes the parser `my` and its associated input stream.
   lexbase.close(my)
+
+proc isGiant*(my: JsonParser): bool {.inline.} =
+  ## returns whether the last ``tkInt|tkFloat`` token was too large for the fast path.
+  assert(my.tok in {tkInt, tkFloat})
+  my.giant
+
+proc getInt*(my: JsonParser): BiggestInt {.inline.} =
+  ## returns the number for the last ``tkInt`` token.
+  assert(my.tok == tkInt)
+  if my.giant: parseBiggestInt(my.a)
+  else: cast[BiggestInt](my.i)
+
+proc getFloat*(my: JsonParser): float {.inline.} =
+  ## returns the number for the last ``tkFloat`` token.
+  assert(my.tok == tkFloat)
+  if my.giant: parseFloat(my.a)
+  else: my.f
 
 proc getColumn*(my: JsonParser): int {.inline.} =
   ## get the current column the parser has arrived at.
@@ -198,35 +218,87 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
-proc parseNumber(my: var JsonParser) =
-  var pos = my.bufpos
-  if my.buf[pos] == '-':
-    add(my.a, '-')
-    inc(pos)
-  if my.buf[pos] == '.':
-    add(my.a, "0.")
-    inc(pos)
-  else:
-    while my.buf[pos] in Digits:
-      add(my.a, my.buf[pos])
-      inc(pos)
-    if my.buf[pos] == '.':
-      add(my.a, '.')
-      inc(pos)
-  # digits after the dot:
-  while my.buf[pos] in Digits:
-    add(my.a, my.buf[pos])
-    inc(pos)
-  if my.buf[pos] in {'E', 'e'}:
-    add(my.a, my.buf[pos])
-    inc(pos)
-    if my.buf[pos] in {'+', '-'}:
-      add(my.a, my.buf[pos])
-      inc(pos)
-    while my.buf[pos] in Digits:
-      add(my.a, my.buf[pos])
-      inc(pos)
-  my.bufpos = pos
+template doCopy(a, b, startPos, endPos: untyped): untyped =
+  let n = endPos - startPos
+  if n > 0:
+    a.setLen n
+    copyMem a[0].addr, b[startPos].addr, n
+
+proc i64(c: char): int64 {.inline.} = int64(ord(c) - ord('0'))
+
+proc pow10(e: int64): float {.inline.} =
+  const p10 = [1e-22, 1e-21, 1e-20, 1e-19, 1e-18, 1e-17, 1e-16, 1e-15, 1e-14,
+               1e-13, 1e-12, 1e-11, 1e-10, 1e-09, 1e-08, 1e-07, 1e-06, 1e-05,
+               1e-4, 1e-3, 1e-2, 1e-1, 1.0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7,
+               1e8, 1e9]
+  if -22 <= e and e <= 9:
+    return p10[e + 22]
+  result = 1.0
+  var base = 10.0
+  var e = e
+  if e < 0:
+    e = -e
+    base = 0.1
+  while e != 0:
+    if (e and 1) != 0:
+      result *= base
+    e = e shr 1
+    base *= base
+
+proc parseNumber(my: var JsonParser): TokKind {.inline.} =
+  let startPos = my.bufpos
+  const Sign = {'+', '-'}
+  var i = startPos
+  var noDot = false
+  var exp = 0'i64
+  var p10 = 0
+  var pnt = -1
+  var nD = 0
+  my.giant = false
+  my.i = 0'i64
+  if my.buf[i] in Sign:
+    i.inc
+  while my.buf[i] != '\0':
+    if my.buf[i] notin Digits:
+      if my.buf[i] != '.' or pnt >= 0:
+        break
+      pnt = nD
+      nD.dec
+    elif nD < 18:
+      my.i = 10 * my.i + my.buf[i].i64
+    else:
+      my.giant = true
+      p10.inc
+    i.inc
+    nD.inc
+  if my.buf[startPos] == '-':
+    my.i = -my.i
+  if pnt < 0:
+    pnt = nD
+    noDot = true
+  elif nD == 1:
+    return tkError
+  if my.buf[i] in {'E', 'e'}:
+    i.inc
+    let i0 = i
+    if my.buf[i] in Sign:
+      i.inc
+    while my.buf[i] in Digits:
+      exp = 10 * exp + my.buf[i].i64
+      i.inc
+    if my.buf[i0] == '-':
+      exp = -exp
+  elif noDot:
+    my.bufpos = i
+    if my.giant:
+      doCopy(my.a, my.buf, startPos, i)
+    return tkInt
+  exp += pnt - nD + p10
+  my.f = my.i.float * pow10(exp)
+  if my.giant:
+    doCopy(my.a, my.buf, startPos, i)
+  my.bufpos = i
+  return tkFloat
 
 proc parseName(my: var JsonParser) =
   var pos = my.bufpos
@@ -237,16 +309,13 @@ proc parseName(my: var JsonParser) =
   my.bufpos = pos
 
 proc getTok*(my: var JsonParser): TokKind =
-  setLen(my.a, 0)
   skip(my) # skip whitespace, comments
   case my.buf[my.bufpos]
   of '-', '.', '0'..'9':
-    parseNumber(my)
-    if {'.', 'e', 'E'} in my.a:
-      result = tkFloat
-    else:
-      result = tkInt
+    setLen(my.a, 0)
+    result = parseNumber(my)
   of '"':
+    setLen(my.a, 0)
     result = parseString(my)
   of '[':
     inc(my.bufpos)
@@ -269,6 +338,7 @@ proc getTok*(my: var JsonParser): TokKind =
   of '\0':
     result = tkEof
   of 'a'..'z', 'A'..'Z', '_':
+    setLen(my.a, 0)
     parseName(my)
     case my.a
     of "null": result = tkNull

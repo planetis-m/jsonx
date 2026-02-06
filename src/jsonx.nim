@@ -138,7 +138,7 @@ proc readJson*(dst: var char; p: var JsonParser) =
     dst = p.a[0]
     discard getTok(p)
   elif p.tok == tkInt:
-    dst = char(parseInt(p.a))
+    dst = char(p.getInt())
     discard getTok(p)
   else:
     raiseParseErr(p, "string of length 1 or int for a char")
@@ -156,17 +156,17 @@ proc readJson*(dst: var bool; p: var JsonParser) =
 
 proc readJson*[T: SomeInteger](dst: var T; p: var JsonParser) =
   if p.tok == tkInt:
-    dst = T(parseInt(p.a))
+    dst = T(p.getInt())
     discard getTok(p)
   else:
     raiseParseErr(p, "int")
 
 proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
   if p.tok == tkFloat:
-    dst = T(parseFloat(p.a))
+    dst = T(p.getFloat())
     discard getTok(p)
   elif p.tok == tkInt:
-    dst = T(parseInt(p.a))
+    dst = T(p.getInt())
     discard getTok(p)
   else:
     raiseParseErr(p, "float or int")
@@ -176,7 +176,7 @@ proc readJson*[T: enum](dst: var T; p: var JsonParser) =
     dst = parseEnum[T](p.a)
     discard getTok(p)
   elif p.tok == tkInt:
-    dst = T(parseInt(p.a))
+    dst = T(p.getInt())
     discard getTok(p)
   else:
     raiseParseErr(p, "string or int for a enum")
