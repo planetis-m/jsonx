@@ -174,6 +174,14 @@ block:
   let a = jsonToFromString(data)
   assert a == data
 block:
+  doAssertRaises(JsonParsingError):
+    var a: array[0..1, int]
+    fromJson("[1]", a)
+block:
+  doAssertRaises(JsonParsingError):
+    var a: array[0..1, int]
+    fromJson("[1,2,3]", a)
+block:
   let data = "hello world"
   let a = jsonToFromString(data)
   assert a == data

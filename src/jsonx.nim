@@ -201,13 +201,19 @@ proc readJson*[T](dst: var seq[T]; p: var JsonParser) =
 proc readJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
   eat(p, tkBracketLe)
   var i = int(low(dst))
-  while p.tok != tkBracketRi:
+  let hi = int(high(dst))
+  while i <= hi:
+    if p.tok == tkBracketRi:
+      raiseParseErr(p, "array element")
     readJson(dst[S(i)], p)
     inc(i)
-    if p.tok != tkComma: break
-    discard getTok(p)
-  #if i <= high(dst):
-    #raise newException(RangeDefect, "array not filled")
+    if i <= hi:
+      if p.tok == tkComma:
+        discard getTok(p)
+      elif p.tok != tkBracketRi:
+        raiseParseErr(p, "']' or ','")
+  if p.tok != tkBracketRi:
+    raiseParseErr(p, "']'")
   eat(p, tkBracketRi)
 
 proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
