@@ -212,8 +212,6 @@ proc readJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
         discard getTok(p)
       elif p.tok != tkBracketRi:
         raiseParseErr(p, "']' or ','")
-  if p.tok != tkBracketRi:
-    raiseParseErr(p, "']'")
   eat(p, tkBracketRi)
 
 proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
@@ -412,8 +410,6 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser) =
         discard getTok(p)
       elif p.tok != tkBracketRi:
         raiseParseErr(p, "']' or ','")
-    if p.tok != tkBracketRi:
-      raiseParseErr(p, "']'")
     eat(p, tkBracketRi)
 
 proc fromJson*[T](s: Stream, t: typedesc[T]): T =
