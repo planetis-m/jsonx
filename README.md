@@ -126,3 +126,12 @@ Run from the repo root:
 nim c -r tests/test.nim
 nim c -r tests/test_parsejson.nim
 ```
+
+## Benchmarks
+
+| Parser | Command | Time | Memory |
+| --- | --- | --- | --- |
+| `std/json` | `nim c -r --import:std/times --import:std/strutils bench/benchmark.nim` | `6.71515575s` | `20KiB` |
+| `jsonx` | `nim c -r bench/benchmark_jsonx.nim` | `3.337836258s` | `0B` |
+
+On this run, `jsonx` was about `2.0x` faster than `std/json` and reported lower occupied memory.
