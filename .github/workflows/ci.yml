@@ -14,7 +14,7 @@ jobs:
     - uses: jiro4989/setup-nim-action@v2
       with:
         nim-version: 'stable'
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        repo-token: ${{ github.token }}
     - name: Run tests
       run: |
         nim c -r tests/test_parsejson.nim
@@ -27,7 +27,7 @@ jobs:
     - uses: jiro4989/setup-nim-action@v2
       with:
         nim-version: 'stable'
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        repo-token: ${{ github.token }}
     - name: Run tests
       run: |
         nim c -r tests\test_parsejson.nim
@@ -40,7 +40,7 @@ jobs:
     - uses: jiro4989/setup-nim-action@v2
       with:
         nim-version: 'stable'
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        repo-token: ${{ github.token }}
     - name: Run tests
       run: |
         nim c -r tests/test_parsejson.nim

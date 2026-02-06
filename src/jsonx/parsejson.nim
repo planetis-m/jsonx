@@ -12,8 +12,7 @@
 ## module, but can also be used in its own right.
 
 import std/[strutils, unicode]
-import jsonx/lexbase
-import jsonx/streams
+import jsonx/[lexbase, streams]
 import std/private/decode_helpers
 
 when defined(nimPreviewSlimSystem):
