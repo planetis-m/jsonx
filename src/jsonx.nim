@@ -129,6 +129,22 @@ proc writeJson*[T: object](s: Stream; o: T) =
   streams.write(s, "}")
 
 # deserialization
+template expectObjectSeparator*(p: var JsonParser) =
+  if p.tok == tkComma:
+    discard getTok(p)
+    if p.tok == tkCurlyRi:
+      raiseParseErr(p, "string literal as key")
+  elif p.tok != tkCurlyRi:
+    raiseParseErr(p, "'}' or ','")
+
+template expectArraySeparator*(p: var JsonParser) =
+  if p.tok == tkComma:
+    discard getTok(p)
+    if p.tok == tkBracketRi:
+      raiseParseErr(p, "array element")
+  elif p.tok != tkBracketRi:
+    raiseParseErr(p, "']' or ','")
+
 proc readJson*(dst: var string; p: var JsonParser) =
   if p.tok == tkNull:
     dst = ""
@@ -194,8 +210,7 @@ proc readJson*[T](dst: var seq[T]; p: var JsonParser) =
     var tmp: T
     readJson(tmp, p)
     dst.add(tmp)
-    if p.tok != tkComma: break
-    discard getTok(p)
+    expectArraySeparator(p)
   eat(p, tkBracketRi)
 
 proc readJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
@@ -208,10 +223,7 @@ proc readJson*[S, T](dst: var array[S, T]; p: var JsonParser) =
     readJson(dst[S(i)], p)
     inc(i)
     if i <= hi:
-      if p.tok == tkComma:
-        discard getTok(p)
-      elif p.tok != tkBracketRi:
-        raiseParseErr(p, "']' or ','")
+      expectArraySeparator(p)
   eat(p, tkBracketRi)
 
 proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
@@ -220,8 +232,7 @@ proc readJson*[T](dst: var (SomeSet[T]|set[T]); p: var JsonParser) =
     var tmp: T
     readJson(tmp, p)
     dst.incl(tmp)
-    if p.tok != tkComma: break
-    discard getTok(p)
+    expectArraySeparator(p)
   eat(p, tkBracketRi)
 
 proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: var JsonParser) =
@@ -233,8 +244,7 @@ proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: var Js
     discard getTok(p)
     eat(p, tkColon)
     readJson(mgetOrPut(dst, key, default(T)), p)
-    if p.tok != tkComma: break
-    discard getTok(p)
+    expectObjectSeparator(p)
   eat(p, tkCurlyRi)
 
 proc readJson*[T](dst: var ref T; p: var JsonParser) =
@@ -268,28 +278,24 @@ proc skipJson(p: var JsonParser) =
       discard getTok(p)
       eat(p, tkColon)
       skipJson(p)
-      if p.tok != tkComma: break
-      discard getTok(p)
+      expectObjectSeparator(p)
     eat(p, tkCurlyRi)
   of tkBracketLe:
     discard getTok(p)
     while p.tok != tkBracketRi:
       skipJson(p)
-      if p.tok != tkComma: break
-      discard getTok(p)
+      expectArraySeparator(p)
     eat(p, tkBracketRi)
   of tkError, tkCurlyRi, tkBracketRi, tkColon, tkComma, tkEof:
     raiseParseErr(p, "{")
 
 template readFieldsInner(parser, body) =
-  if p.tok != tkComma: break
-  discard getTok(p)
+  expectObjectSeparator(parser)
   while parser.tok != tkCurlyRi:
     if parser.tok != tkString:
       raiseParseErr(parser, "string literal as key")
     body
-    if parser.tok != tkComma: break
-    discard getTok(parser)
+    expectObjectSeparator(parser)
 
 template raiseWrongKey(parser) =
   when defined(jsonxLenient):
@@ -386,8 +392,7 @@ proc readJson*[T: object](dst: var T; p: var JsonParser) =
     if p.tok != tkString:
       raiseParseErr(p, "string literal as key")
     assignObjectImpl(dst, p)
-    if p.tok != tkComma: break
-    discard getTok(p)
+    expectObjectSeparator(p)
   eat(p, tkCurlyRi)
 
 proc readJson*[T: tuple](dst: var T; p: var JsonParser) =
@@ -397,8 +402,7 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser) =
       if p.tok != tkString:
         raiseParseErr(p, "string literal as key")
       assignObjectImpl(dst, p)
-      if p.tok != tkComma: break
-      discard getTok(p)
+      expectObjectSeparator(p)
     eat(p, tkCurlyRi)
   else:
     eat(p, tkBracketLe)
@@ -406,10 +410,7 @@ proc readJson*[T: tuple](dst: var T; p: var JsonParser) =
       if p.tok == tkBracketRi:
         raiseParseErr(p, "tuple element")
       readJson(v, p)
-      if p.tok == tkComma:
-        discard getTok(p)
-      elif p.tok != tkBracketRi:
-        raiseParseErr(p, "']' or ','")
+      expectArraySeparator(p)
     eat(p, tkBracketRi)
 
 proc fromJson*[T](s: Stream, t: typedesc[T]): T =
@@ -467,8 +468,7 @@ template whileJsonItems(s, x, xType, body: untyped) =
       var x: xType
       readJson(x, p)
       body
-      if p.tok != tkComma: break
-      discard getTok(p)
+      expectArraySeparator(p)
     eat(p, tkBracketRi)
     eat(p, tkEof)
   finally:

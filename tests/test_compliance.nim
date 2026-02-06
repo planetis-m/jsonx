@@ -36,9 +36,8 @@ block:
 
 block:
   # Structural strictness
-  # Current jsonx behavior: trailing commas are accepted (non-standard extension).
-  doAssert expectAccept("""[1,]""", seq[int]) == @[1]
-  doAssert expectAccept("""{"a":1,}""", DuplicateKeyObj).a == 1
+  expectReject("""[1,]""", seq[int])
+  expectReject("""{"a":1,}""", DuplicateKeyObj)
   expectReject("""{"a":1} {"a":2}""", DuplicateKeyObj)
   expectReject("// comment\n1", int)
   expectReject("/* comment */ 1", int)
