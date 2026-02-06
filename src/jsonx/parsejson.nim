@@ -246,69 +246,69 @@ proc pow10(e: int64): float {.inline.} =
     base *= base
 
 proc parseNumber(my: var JsonParser): TokKind {.inline.} =
-  let startPos = my.bufpos
+  let tokenStart = my.bufpos
   const Sign = {'+', '-'}
-  var i = startPos
-  var noDot = false
-  var exp = 0'i64
-  var p10 = 0
-  var pnt = -1
-  var nD = 0
-  var digits = 0
+  var cursor = tokenStart
+  var isInteger = false
+  var exponent = 0'i64
+  # Number of extra digits that were not folded into `my.i` (fast path caps at 18 digits).
+  var droppedDigits = 0
+  var dotIndex = -1
+  var digitCount = 0
   my.giant = false
   my.i = 0'i64
-  if my.buf[i] in Sign:
-    i.inc
-  let intStart = i
-  while my.buf[i] != '\0':
-    if my.buf[i] notin Digits:
-      if my.buf[i] != '.' or pnt >= 0:
-        break
-      pnt = nD
-      nD.dec
-    elif nD < 18:
-      my.i = 10 * my.i + my.buf[i].i64
-      digits.inc
+  if my.buf[cursor] in Sign:
+    cursor.inc
+  let integerStart = cursor
+  while my.buf[cursor] != '\0':
+    let ch = my.buf[cursor]
+    if ch in Digits:
+      if digitCount < 18:
+        my.i = 10 * my.i + ch.i64
+      else:
+        my.giant = true
+        droppedDigits.inc
+      digitCount.inc
+      cursor.inc
+    elif ch == '.' and dotIndex < 0:
+      dotIndex = digitCount
+      cursor.inc
     else:
-      my.giant = true
-      p10.inc
-      digits.inc
-    i.inc
-    nD.inc
-  if digits == 0:
+      break
+  if digitCount == 0:
     return tkError
-  if my.buf[intStart] == '0' and nD > 1 and pnt != 1:
+  if my.buf[integerStart] == '0' and digitCount > 1 and dotIndex != 1:
     return tkError
-  if my.buf[startPos] == '-':
+  if my.buf[tokenStart] == '-':
     my.i = -my.i
-  if pnt < 0:
-    pnt = nD
-    noDot = true
-  elif nD == 1:
+  if dotIndex < 0:
+    dotIndex = digitCount
+    isInteger = true
+  elif digitCount == 1:
     return tkError
-  if my.buf[i] in {'E', 'e'}:
-    i.inc
-    let i0 = i
-    if my.buf[i] in Sign:
-      i.inc
-    let expStart = i
-    while my.buf[i] in Digits:
-      exp = 10 * exp + my.buf[i].i64
-      i.inc
-    if i == expStart:
+  if my.buf[cursor] in {'E', 'e'}:
+    cursor.inc
+    let exponentSignPos = cursor
+    if my.buf[cursor] in Sign:
+      cursor.inc
+    let exponentStart = cursor
+    while my.buf[cursor] in Digits:
+      exponent = 10 * exponent + my.buf[cursor].i64
+      cursor.inc
+    if cursor == exponentStart:
       return tkError
-    if my.buf[i0] == '-':
-      exp = -exp
-  elif noDot:
-    my.bufpos = i
+    if my.buf[exponentSignPos] == '-':
+      exponent = -exponent
+  elif isInteger:
+    my.bufpos = cursor
     if my.giant:
-      doCopy(my.a, my.buf, startPos, i)
+      doCopy(my.a, my.buf, tokenStart, cursor)
     return tkInt
-  exp += pnt - nD + p10
-  my.f = my.i.float * pow10(exp)
+  exponent += dotIndex - digitCount + droppedDigits
+  my.f = my.i.float * pow10(exponent)
   if my.giant:
-    doCopy(my.a, my.buf, startPos, i)
-  my.bufpos = i
+    doCopy(my.a, my.buf, tokenStart, cursor)
+  my.bufpos = cursor
   return tkFloat
 
 proc parseName(my: var JsonParser) =
@@ -360,7 +360,6 @@ proc getTok*(my: var JsonParser): TokKind =
     inc(my.bufpos)
     result = tkError
   my.tok = result
-
 
 proc raiseParseErr*(p: JsonParser, msg: string) {.noinline, noreturn.} =
   ## raises an `EJsonParsingError` exception.
