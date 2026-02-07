@@ -208,14 +208,25 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
+proc parseNumberValue(my: var JsonParser; tokenStart, tokenLen: int;
+    kind: TokKind): TokKind {.inline.} =
+  var L = 0
+  if kind == tkFloat:
+    L = parseFloat(my.buf, my.f, tokenStart)
+  else:
+    try:
+      L = parseBiggestInt(my.buf, my.i, tokenStart)
+    except ValueError:
+      return tkError
+  if L != tokenLen:
+    return tkError
+  result = kind
+
 proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
   let tokenStart = my.bufpos
   var pos = tokenStart
   var hasDot = false
   var hasExp = false
-  var digitsBeforeDot = 0
-  var digitsAfterDot = 0
-  var digitsInExp = 0
   if my.buf[pos] == '-':
     inc(pos)
   if my.buf[pos] == '.':
@@ -224,13 +235,11 @@ proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
   else:
     while my.buf[pos] in Digits:
       inc(pos)
-      inc(digitsBeforeDot)
     if my.buf[pos] == '.':
       hasDot = true
       inc(pos)
   while my.buf[pos] in Digits:
     inc(pos)
-    inc(digitsAfterDot)
   if my.buf[pos] in {'E', 'e'}:
     hasExp = true
     inc(pos)
@@ -238,33 +247,11 @@ proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
       inc(pos)
     while my.buf[pos] in Digits:
       inc(pos)
-      inc(digitsInExp)
-
-  if digitsBeforeDot + digitsAfterDot == 0:
-    return tkError
-  if hasDot and digitsAfterDot == 0:
-    return tkError
-  if hasExp and digitsInExp == 0:
-    return tkError
 
   my.bufpos = pos
-  if not parseValue:
-    if hasDot or hasExp: return tkFloat
-    else: return tkInt
-
-  let tokenLen = pos - tokenStart
-  var consumed = 0
-  if hasDot or hasExp:
-    consumed = parseFloat(my.buf, my.f, tokenStart)
-    result = tkFloat
-  else:
-    try:
-      consumed = parseBiggestInt(my.buf, my.i, tokenStart)
-    except ValueError:
-      return tkError
-    result = tkInt
-  if consumed != tokenLen:
-    return tkError
+  result = if hasDot or hasExp: tkFloat else: tkInt
+  if parseValue:
+    result = parseNumberValue(my, tokenStart, pos - tokenStart, result)
 
 proc parseKeyword(my: var JsonParser): TokKind =
   let pos = my.bufpos
