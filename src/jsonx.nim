@@ -129,7 +129,7 @@ proc writeJson*[T: object](s: Stream; o: T) =
   streams.write(s, "}")
 
 # deserialization
-template expectObjectSeparator*(p: var JsonParser) =
+template expectObjectSeparator*(p: JsonParser) =
   if p.tok == tkComma:
     discard getTok(p)
     if p.tok == tkCurlyRi:
@@ -137,7 +137,7 @@ template expectObjectSeparator*(p: var JsonParser) =
   elif p.tok != tkCurlyRi:
     raiseParseErr(p, "'}' or ','")
 
-template expectArraySeparator*(p: var JsonParser) =
+template expectArraySeparator*(p: JsonParser) =
   if p.tok == tkComma:
     discard getTok(p)
     if p.tok == tkBracketRi:
