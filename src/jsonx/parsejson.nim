@@ -208,11 +208,14 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
-proc parseNumber(my: var JsonParser): TokKind {.inline.} =
+proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
   let tokenStart = my.bufpos
   var pos = tokenStart
   var hasDot = false
   var hasExp = false
+  var digitsBeforeDot = 0
+  var digitsAfterDot = 0
+  var digitsInExp = 0
   if my.buf[pos] == '-':
     inc(pos)
   if my.buf[pos] == '.':
@@ -221,11 +224,13 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   else:
     while my.buf[pos] in Digits:
       inc(pos)
+      inc(digitsBeforeDot)
     if my.buf[pos] == '.':
       hasDot = true
       inc(pos)
   while my.buf[pos] in Digits:
     inc(pos)
+    inc(digitsAfterDot)
   if my.buf[pos] in {'E', 'e'}:
     hasExp = true
     inc(pos)
@@ -233,6 +238,19 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
       inc(pos)
     while my.buf[pos] in Digits:
       inc(pos)
+      inc(digitsInExp)
+
+  if digitsBeforeDot + digitsAfterDot == 0:
+    return tkError
+  if hasDot and digitsAfterDot == 0:
+    return tkError
+  if hasExp and digitsInExp == 0:
+    return tkError
+
+  my.bufpos = pos
+  if not parseValue:
+    if hasDot or hasExp: return tkFloat
+    else: return tkInt
 
   let tokenLen = pos - tokenStart
   var consumed = 0
@@ -247,7 +265,6 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
     result = tkInt
   if consumed != tokenLen:
     return tkError
-  my.bufpos = pos
 
 proc parseKeyword(my: var JsonParser): TokKind =
   let pos = my.bufpos
@@ -277,12 +294,12 @@ proc parseKeyword(my: var JsonParser): TokKind =
   my.bufpos = endPos
   result = tkError
 
-proc getTok*(my: var JsonParser): TokKind =
+proc getTok*(my: var JsonParser; parseNumbers = true): TokKind =
   setLen(my.a, 0)
   skip(my) # skip whitespace, comments
   case my.buf[my.bufpos]
   of '-', '.', '0'..'9':
-    result = parseNumber(my)
+    result = parseNumber(my, parseNumbers)
   of '"':
     result = parseString(my)
   of '[':
@@ -316,6 +333,6 @@ proc raiseParseErr*(p: JsonParser, msg: string) {.noinline, noreturn.} =
   ## raises an `EJsonParsingError` exception.
   raise newException(JsonParsingError, errorMsgExpected(p, msg))
 
-proc eat*(p: var JsonParser, tok: TokKind) =
-  if p.tok == tok: discard getTok(p)
+proc eat*(p: var JsonParser, tok: TokKind; parseNumbers = true) =
+  if p.tok == tok: discard getTok(p, parseNumbers)
   else: raiseParseErr(p, tokToStr[tok])
