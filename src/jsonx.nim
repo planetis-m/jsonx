@@ -310,81 +310,45 @@ template readNestedFields(parser, body) =
     expectObjectSeparator(parser)
   eat(parser, tkCurlyRi)
 
-template readRemainingFields(parser, body) =
-  expectObjectSeparator(parser)
-  while parser.tok != tkCurlyRi:
-    if parser.tok != tkString:
-      raiseParseErr(parser, "string literal as key")
-    body
-    expectObjectSeparator(parser)
-
-template readKindFieldAndSet(parser, tmpSym, kindSym, kindType) =
-  discard getTok(parser)
-  eat(parser, tkColon)
-  var kindTmp: kindType
-  readJson(kindTmp, parser)
-  tmpSym = (typeof tmpSym)(kindSym: kindTmp)
-
 template caseANormalized: untyped =
   nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")))
 
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode
 
-proc foldRecCaseStandalone(typeNode, tmpSym, parser: NimNode): NimNode =
-  expectKind(typeNode, nnkRecCase)
-  let kindSym = typeNode[0][0]
-  let kindTmpSym = genSym(nskVar, "kindTmp")
+proc enumTypeFromKindSym(kindSym: NimNode): NimNode =
   var enumTypeNode = kindSym.getTypeInst
   if enumTypeNode.kind == nnkBracketExpr and enumTypeNode.len == 2:
     let head = enumTypeNode[0]
     if head.kind in {nnkSym, nnkIdent} and $head in ["typeDesc", "typedesc"]:
       enumTypeNode = enumTypeNode[1]
-  let enumTy = enumTypeNode.getTypeImpl
-  expectKind(enumTy, nnkEnumTy)
+  result = enumTypeNode.getTypeImpl
+  expectKind(result, nnkEnumTy)
 
-  let keyCase = caseANormalized()
-  let inner = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
-  let kindName = nimIdentNormalize(kindSym.strVal)
-  for i in 1..<typeNode.len:
-    let x = foldObjectBody(typeNode[i], tmpSym, parser)
-    if x.kind != nnkNone: inner.add x
+proc enumFields(enumTy: NimNode): seq[NimNode] =
+  result = @[]
   for it in enumTy:
     let enumField = case it.kind
                     of nnkEnumFieldDef: it[0]
                     of nnkSym, nnkIdent: it
                     else: newNimNode(nnkNone)
-    if enumField.kind == nnkNone:
-      continue
-    let key = nimIdentNormalize(enumField.strVal)
-    keyCase.add nnkOfBranch.newTree(newLit(key), newStmtList(
-      nnkAsgn.newTree(kindTmpSym, enumField)
+    if enumField.kind != nnkNone:
+      result.add enumField
+
+proc buildVariantInnerCase(typeNode, tmpSym, parser, kindSym: NimNode): NimNode =
+  result = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
+  for i in 1..<typeNode.len:
+    let x = foldObjectBody(typeNode[i], tmpSym, parser)
+    if x.kind != nnkNone:
+      result.add x
+
+proc buildVariantKeyCase(parser, kindTmpSym: NimNode; fields: seq[NimNode]): NimNode =
+  result = caseANormalized()
+  for field in fields:
+    let key = nimIdentNormalize(field.strVal)
+    result.add nnkOfBranch.newTree(newLit(key), newStmtList(
+      nnkAsgn.newTree(kindTmpSym, field)
     ))
-  keyCase.add nnkElse.newTree(newCall(bindSym"raiseParseErr", parser, newLit("valid object field")))
-  let nestedPath = newStmtList(
-    newVarStmt(kindTmpSym, newCall(bindSym"default",
-      newCall(bindSym"typeof", nnkDotExpr.newTree(tmpSym, kindSym)))),
-    keyCase,
-    nnkAsgn.newTree(tmpSym, nnkObjConstr.newTree(
-      nnkPar.newTree(newCall(bindSym"typeof", tmpSym)),
-      nnkExprColonExpr.newTree(kindSym, kindTmpSym)
-    )),
-    newNimNode(nnkDiscardStmt).add(newCall(bindSym"getTok", parser)),
-    newCall(bindSym"eat", parser, bindSym"tkColon"),
-    getAst(readNestedFields(parser, copyNimTree(inner)))
-  )
-  let flatPath = newStmtList(
-    getAst(readKindFieldAndSet(parser, tmpSym, kindSym,
-      newCall(bindSym"typeof", nnkDotExpr.newTree(tmpSym, kindSym)))),
-    getAst(readRemainingFields(parser, copyNimTree(inner)))
-  )
-  result = nnkIfStmt.newTree(
-    nnkElifBranch.newTree(
-      nnkInfix.newTree(bindSym"==",
-        newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")),
-        newLit(kindName)),
-      flatPath),
-    nnkElse.newTree(nestedPath)
-  )
+  result.add nnkElse.newTree(newCall(bindSym"raiseParseErr", parser, newLit("valid object field")))
 
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind
@@ -392,7 +356,24 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
     result = newNimNode(nnkNone)
   of nnkRecList, nnkTupleTy:
     if typeNode.kind == nnkRecList and typeNode.len == 1 and typeNode[0].kind == nnkRecCase:
-      return foldRecCaseStandalone(typeNode[0], tmpSym, parser)
+      let recCase = typeNode[0]
+      let kindSym = recCase[0][0]
+      let kindTmpSym = genSym(nskVar, "kindTmp")
+      let fields = enumFields(enumTypeFromKindSym(kindSym))
+      let keyCase = buildVariantKeyCase(parser, kindTmpSym, fields)
+      let inner = buildVariantInnerCase(recCase, tmpSym, parser, kindSym)
+      return newStmtList(
+        newVarStmt(kindTmpSym, newCall(bindSym"default",
+          newCall(bindSym"typeof", nnkDotExpr.newTree(tmpSym, kindSym)))),
+        keyCase,
+        nnkAsgn.newTree(tmpSym, nnkObjConstr.newTree(
+          nnkPar.newTree(newCall(bindSym"typeof", tmpSym)),
+          nnkExprColonExpr.newTree(kindSym, kindTmpSym)
+        )),
+        newNimNode(nnkDiscardStmt).add(newCall(bindSym"getTok", parser)),
+        newCall(bindSym"eat", parser, bindSym"tkColon"),
+        getAst(readNestedFields(parser, inner))
+      )
     result = caseANormalized()
     for it in typeNode:
       let x = foldObjectBody(it, tmpSym, parser)
@@ -414,32 +395,14 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   of nnkRecCase:
     let kindSym = typeNode[0][0]
     let kindTmpSym = genSym(nskVar, "kindTmp")
-    var enumTypeNode = kindSym.getTypeInst
-    if enumTypeNode.kind == nnkBracketExpr and enumTypeNode.len == 2:
-      let head = enumTypeNode[0]
-      if head.kind in {nnkSym, nnkIdent} and $head in ["typeDesc", "typedesc"]:
-        enumTypeNode = enumTypeNode[1]
-    let inner = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
-    for i in 1..<typeNode.len:
-      let x = foldObjectBody(typeNode[i], tmpSym, parser)
-      if x.kind != nnkNone: inner.add x
+    let inner = buildVariantInnerCase(typeNode, tmpSym, parser, kindSym)
     result = nnkOfBranch.newTree()
-    let enumTy = enumTypeNode.getTypeImpl
-    expectKind(enumTy, nnkEnumTy)
-    let keyCase = caseANormalized()
-    for it in enumTy:
-      let enumField = case it.kind
-                      of nnkEnumFieldDef: it[0]
-                      of nnkSym, nnkIdent: it
-                      else: newNimNode(nnkNone)
-      if enumField.kind == nnkNone:
-        continue
+    let fields = enumFields(enumTypeFromKindSym(kindSym))
+    let keyCase = buildVariantKeyCase(parser, kindTmpSym, fields)
+    for enumField in fields:
       let key = nimIdentNormalize(enumField.strVal)
       result.add newLit(key)
-      keyCase.add nnkOfBranch.newTree(newLit(key), newStmtList(
-        nnkAsgn.newTree(kindTmpSym, enumField)
-      ))
-    keyCase.add nnkElse.newTree(newCall(bindSym"raiseParseErr", parser, newLit("valid object field")))
+    
     result.add newStmtList(
       newVarStmt(kindTmpSym, newCall(bindSym"default",
         newCall(bindSym"typeof", nnkDotExpr.newTree(tmpSym, kindSym)))),
