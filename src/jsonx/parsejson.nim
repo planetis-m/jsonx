@@ -222,7 +222,7 @@ proc parseNumberValue(my: var JsonParser; tokenStart, tokenLen: int;
     return tkError
   result = kind
 
-proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
+proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   let tokenStart = my.bufpos
   var pos = tokenStart
   var hasDot = false
@@ -250,8 +250,7 @@ proc parseNumber(my: var JsonParser; parseValue: bool): TokKind {.inline.} =
 
   my.bufpos = pos
   result = if hasDot or hasExp: tkFloat else: tkInt
-  if parseValue:
-    result = parseNumberValue(my, tokenStart, pos - tokenStart, result)
+  result = parseNumberValue(my, tokenStart, pos - tokenStart, result)
 
 proc parseKeyword(my: var JsonParser): TokKind =
   let pos = my.bufpos
@@ -281,12 +280,12 @@ proc parseKeyword(my: var JsonParser): TokKind =
   my.bufpos = endPos
   result = tkError
 
-proc getTok*(my: var JsonParser; parseNumbers = true): TokKind =
+proc getTok*(my: var JsonParser): TokKind =
   setLen(my.a, 0)
   skip(my) # skip whitespace, comments
   case my.buf[my.bufpos]
   of '-', '.', '0'..'9':
-    result = parseNumber(my, parseNumbers)
+    result = parseNumber(my)
   of '"':
     result = parseString(my)
   of '[':
@@ -320,6 +319,6 @@ proc raiseParseErr*(p: JsonParser, msg: string) {.noinline, noreturn.} =
   ## raises an `EJsonParsingError` exception.
   raise newException(JsonParsingError, errorMsgExpected(p, msg))
 
-proc eat*(p: var JsonParser, tok: TokKind; parseNumbers = true) =
-  if p.tok == tok: discard getTok(p, parseNumbers)
+proc eat*(p: var JsonParser, tok: TokKind) =
+  if p.tok == tok: discard getTok(p)
   else: raiseParseErr(p, tokToStr[tok])

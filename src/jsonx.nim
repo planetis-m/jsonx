@@ -129,17 +129,17 @@ proc writeJson*[T: object](s: Stream; o: T) =
   streams.write(s, "}")
 
 # deserialization
-template expectObjectSeparator*(p: var JsonParser; parseNumbers = true) =
+template expectObjectSeparator*(p: var JsonParser) =
   if p.tok == tkComma:
-    discard getTok(p, parseNumbers)
+    discard getTok(p)
     if p.tok == tkCurlyRi:
       raiseParseErr(p, "string literal as key")
   elif p.tok != tkCurlyRi:
     raiseParseErr(p, "'}' or ','")
 
-template expectArraySeparator*(p: var JsonParser; parseNumbers = true) =
+template expectArraySeparator*(p: var JsonParser) =
   if p.tok == tkComma:
-    discard getTok(p, parseNumbers)
+    discard getTok(p)
     if p.tok == tkBracketRi:
       raiseParseErr(p, "array element")
   elif p.tok != tkBracketRi:
@@ -269,23 +269,23 @@ proc readJson*[T](dst: var Option[T]; p: var JsonParser) =
 proc skipJson(p: var JsonParser) =
   case p.tok
   of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
-    discard getTok(p, false)
+    discard getTok(p)
   of tkCurlyLe:
-    discard getTok(p, false)
+    discard getTok(p)
     while p.tok != tkCurlyRi:
       if p.tok != tkString:
         raiseParseErr(p, "string literal as key")
-      discard getTok(p, false)
-      eat(p, tkColon, false)
+      discard getTok(p)
+      eat(p, tkColon)
       skipJson(p)
-      expectObjectSeparator(p, false)
-    eat(p, tkCurlyRi, false)
+      expectObjectSeparator(p)
+    eat(p, tkCurlyRi)
   of tkBracketLe:
-    discard getTok(p, false)
+    discard getTok(p)
     while p.tok != tkBracketRi:
       skipJson(p)
-      expectArraySeparator(p, false)
-    eat(p, tkBracketRi, false)
+      expectArraySeparator(p)
+    eat(p, tkBracketRi)
   of tkError, tkCurlyRi, tkBracketRi, tkColon, tkComma, tkEof:
     raiseParseErr(p, "{")
 
@@ -300,7 +300,7 @@ template readFieldsInner(parser, body) =
 template raiseWrongKey(parser) =
   when defined(jsonxLenient):
     discard getTok(parser)
-    eat(parser, tkColon, false)
+    eat(parser, tkColon)
     skipJson(parser)
   else: raiseParseErr(parser, "valid object field")
 
