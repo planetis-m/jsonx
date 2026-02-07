@@ -134,9 +134,10 @@ Build flag: `-d:danger`
 
 | Benchmark | Command | Time | Memory |
 | --- | --- | --- | --- |
-| `std/json` | `nim c -d:danger -r bench/benchmark.nim` | `1.53994641s` | `20KiB` |
-| `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.788717087s` | `0B` |
-| `jsony` | `nim c -d:danger -r bench/benchmark_jsony.nim` | `0.683183697s` | `0B` |
-| `jsonx (ints)` | `nim c -d:danger -r bench/benchmark_jsonx_ints.nim` | `0.081553419s` | `30.25MiB` |
+| `std/json` | `nim c -d:danger -r bench/benchmark.nim` | `1.6649071119999999s` | `20KiB` |
+| `jsonx` | `nim c -d:danger -r bench/benchmark_jsonx.nim` | `0.816520769s` | `0B` |
+| `jsony` | `nim c -d:danger -r bench/benchmark_jsony.nim` | `0.694056106s` | `0B` |
+| `eminim` | `nim c -d:danger -r bench/benchmark_eminim.nim` | `0.7233687240000001s` | `20KiB` |
+| `jsonx (ints)` | `nim c -d:danger -r bench/benchmark_jsonx_ints.nim` | `0.09601670300000001s` | `30.25MiB` |
 
-In this run, `jsonx` is about `1.95x` faster than `std/json` and `jsony` is about `2.25x` faster than `std/json`. `jsony` is about `1.15x` faster than `jsonx`.
+In this run, `jsonx` is about `2.04x` faster than `std/json`, `jsony` is about `2.40x` faster than `std/json`, and `eminim` is about `2.30x` faster than `std/json`. `jsony` is about `1.18x` faster than `jsonx`.
