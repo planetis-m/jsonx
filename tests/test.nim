@@ -273,17 +273,19 @@ block:
   let b = a.next
   assert b.value == 2
 block:
-  let data = Bar(kind: Apple, apple: "world")
-  let a = jsonToFromString(data)
+  let a = fromJson("""{"Apple":{"apple":"world"}}""", Bar)
   assert a.kind == Apple
   assert a.apple == "world"
 block:
-  let data = ContentNode(kind: P, pChildren: @[
-    ContentNode(kind: Text, textStr: "mychild"),
-    ContentNode(kind: Br)
-  ])
-  let a = jsonToFromString(data)
-  assert $a == $data
+  let a = fromJson(
+    """{"P":{"pChildren":[{"Text":{"textStr":"mychild"}},{"Br":{}}]}}""",
+    ContentNode
+  )
+  assert a.kind == P
+  assert a.pChildren.len == 2
+  assert a.pChildren[0].kind == Text
+  assert a.pChildren[0].textStr == "mychild"
+  assert a.pChildren[1].kind == Br
 block:
   let data = @[
     IrisPlant(sepalLength: 5.1, sepalWidth: 3.5, petalLength: 1.4,
