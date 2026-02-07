@@ -102,8 +102,7 @@ proc readJson*[T](dst: var SparseSet[T]; p: var JsonParser) =
     readJson(val, p)
     dst[e] = val
     eat(p, tkBracketRi)
-    if p.tok != tkComma: break
-    discard getTok(p)
+    expectArraySeparator(p)
   eat(p, tkBracketRi)
 ```
 

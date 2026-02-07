@@ -24,8 +24,7 @@ proc lexNumber(input: string): (TokKind, bool) =
   var p: JsonParser
   let s = streams.open(input)
   open(p, s, "test_numbers.json")
-  defer:
-    close(p)
+  defer: close(p)
   let tk = getTok(p)
   doAssert tk in {tkInt, tkFloat}, "expected numeric token for " & input
   result = (tk, isGiant(p))
