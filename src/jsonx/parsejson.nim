@@ -39,7 +39,6 @@ type
     a*: string
     i: int64
     f: float
-    giant: bool
     tok*: TokKind
     filename: string
     rawStringLiterals: bool
@@ -76,16 +75,10 @@ proc close*(my: var JsonParser) {.inline.} =
   ## closes the parser `my` and its associated input stream.
   lexbase.close(my)
 
-proc isGiant*(my: JsonParser): bool {.inline.} =
-  ## returns whether the last ``tkInt`` token was too large for the fast path.
-  assert(my.tok == tkInt)
-  my.giant
-
 proc getInt*(my: JsonParser): BiggestInt {.inline.} =
   ## returns the number for the last ``tkInt`` token.
   assert(my.tok == tkInt)
-  if my.giant: parseBiggestInt(my.a)
-  else: cast[BiggestInt](my.i)
+  cast[BiggestInt](my.i)
 
 proc getFloat*(my: JsonParser): float {.inline.} =
   ## returns the number for the last ``tkFloat`` token.
@@ -217,76 +210,58 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
-template doCopy(a, b, startPos, endPos: untyped): untyped =
-  let n = endPos - startPos
-  if n > 0:
-    a.setLen n
-    copyMem a[0].addr, b[startPos].addr, n
+proc parseFloatToken(my: var JsonParser; startPos, endPos: int): TokKind {.inline.} =
+  let tokenLen = endPos - startPos
+  let consumed = parseFloat(my.buf, my.f, startPos)
+  if consumed != tokenLen:
+    return tkError
+  my.bufpos = endPos
+  tkFloat
 
-proc i64(c: char): int64 {.inline.} = int64(ord(c) - ord('0'))
+proc parseIntToken(my: var JsonParser; startPos, endPos: int): TokKind {.inline.} =
+  var parsed: BiggestInt
+  try:
+    let tokenLen = endPos - startPos
+    let consumed = parseBiggestInt(my.buf, parsed, startPos)
+    if consumed != tokenLen:
+      return tkError
+  except ValueError:
+    return tkError
+  my.i = cast[int64](parsed)
+  my.bufpos = endPos
+  tkInt
 
 proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   let tokenStart = my.bufpos
-  const Sign = {'+', '-'}
-  var cursor = tokenStart
-  var isInteger = false
-  var dotIndex = -1
-  var digitCount = 0
-  my.giant = false
-  my.i = 0'i64
-  if my.buf[cursor] in Sign:
-    cursor.inc
-  let integerStart = cursor
-  while my.buf[cursor] != '\0':
-    let ch = my.buf[cursor]
-    if ch in Digits:
-      if digitCount < 18:
-        my.i = 10 * my.i + ch.i64
-      else:
-        my.giant = true
-      digitCount.inc
-      cursor.inc
-    elif ch == '.' and dotIndex < 0:
-      dotIndex = digitCount
-      cursor.inc
-    else:
-      break
-  if digitCount == 0:
-    return tkError
-  if my.buf[integerStart] == '0' and digitCount > 1 and dotIndex != 1:
-    return tkError
-  if my.buf[tokenStart] == '-':
-    my.i = -my.i
-  if dotIndex < 0:
-    dotIndex = digitCount
-    isInteger = true
-  elif digitCount == 1:
-    return tkError
-  if my.buf[cursor] in {'E', 'e'}:
-    cursor.inc
-    if my.buf[cursor] in Sign:
-      cursor.inc
-    let exponentStart = cursor
-    while my.buf[cursor] in Digits:
-      cursor.inc
-    if cursor == exponentStart:
-      return tkError
-  elif isInteger:
-    my.bufpos = cursor
-    if my.giant:
-      doCopy(my.a, my.buf, tokenStart, cursor)
-    return tkInt
-  # Keep integer parsing on the fast path, and parse floats from the lexer
-  # buffer directly to avoid allocating an intermediate token string.
-  let len = cursor - tokenStart
-  let consumed = parseFloat(my.buf, my.f, tokenStart)
-  if consumed != len:
-    return tkError
-  # Float value is already materialized in `my.f`; keep giant flag for int
-  # fallback only.
-  my.giant = false
-  my.bufpos = cursor
-  return tkFloat
+  var pos = tokenStart
+  var hasDot = false
+  var hasExp = false
+  if my.buf[pos] == '-':
+    inc(pos)
+  if my.buf[pos] == '.':
+    hasDot = true
+    inc(pos)
+  else:
+    while my.buf[pos] in Digits:
+      inc(pos)
+    if my.buf[pos] == '.':
+      hasDot = true
+      inc(pos)
+  while my.buf[pos] in Digits:
+    inc(pos)
+  if my.buf[pos] in {'E', 'e'}:
+    hasExp = true
+    inc(pos)
+    if my.buf[pos] in {'+', '-'}:
+      inc(pos)
+    while my.buf[pos] in Digits:
+      inc(pos)
+
+  if hasDot or hasExp:
+    parseFloatToken(my, tokenStart, pos)
+  else:
+    parseIntToken(my, tokenStart, pos)
+  my.bufpos = pos
 
 proc parseName(my: var JsonParser) =
   var pos = my.bufpos
