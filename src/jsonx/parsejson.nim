@@ -37,7 +37,7 @@ type
 
   JsonParser* = object of BaseLexer ## the parser object.
     a*: string
-    i: int64
+    i: BiggestInt
     f: float
     tok*: TokKind
     filename: string
@@ -78,12 +78,12 @@ proc close*(my: var JsonParser) {.inline.} =
 proc getInt*(my: JsonParser): BiggestInt {.inline.} =
   ## returns the number for the last ``tkInt`` token.
   assert(my.tok == tkInt)
-  cast[BiggestInt](my.i)
+  result = my.i
 
 proc getFloat*(my: JsonParser): float {.inline.} =
   ## returns the number for the last ``tkFloat`` token.
   assert(my.tok == tkFloat)
-  my.f
+  result = my.f
 
 proc getColumn*(my: JsonParser): int {.inline.} =
   ## get the current column the parser has arrived at.
@@ -210,27 +210,6 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
-proc parseFloatToken(my: var JsonParser; startPos, endPos: int): TokKind {.inline.} =
-  let tokenLen = endPos - startPos
-  let consumed = parseFloat(my.buf, my.f, startPos)
-  if consumed != tokenLen:
-    return tkError
-  my.bufpos = endPos
-  tkFloat
-
-proc parseIntToken(my: var JsonParser; startPos, endPos: int): TokKind {.inline.} =
-  var parsed: BiggestInt
-  try:
-    let tokenLen = endPos - startPos
-    let consumed = parseBiggestInt(my.buf, parsed, startPos)
-    if consumed != tokenLen:
-      return tkError
-  except ValueError:
-    return tkError
-  my.i = cast[int64](parsed)
-  my.bufpos = endPos
-  tkInt
-
 proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   let tokenStart = my.bufpos
   var pos = tokenStart
@@ -257,10 +236,19 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
     while my.buf[pos] in Digits:
       inc(pos)
 
+  let tokenLen = pos - tokenStart
+  var consumed = 0
   if hasDot or hasExp:
-    parseFloatToken(my, tokenStart, pos)
+    consumed = parseFloat(my.buf, my.f, tokenStart)
+    result = tkFloat
   else:
-    parseIntToken(my, tokenStart, pos)
+    try:
+      consumed = parseBiggestInt(my.buf, my.i, tokenStart)
+    except ValueError:
+      return tkError
+    result = tkInt
+  if consumed != tokenLen:
+    return tkError
   my.bufpos = pos
 
 proc parseName(my: var JsonParser) =

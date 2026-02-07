@@ -1,5 +1,5 @@
 # Package
-version       = "0.4.1"
+version       = "0.5.0"
 author        = "planetis"
 description   = "jsonx"
 license       = "MIT"
