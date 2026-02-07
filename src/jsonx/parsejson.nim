@@ -11,7 +11,7 @@
 ## and exported by the `json` standard library
 ## module, but can also be used in its own right.
 
-import std/[strutils, unicode]
+import std/[strutils, unicode, parseutils]
 import jsonx/[lexbase, streams]
 import std/private/decode_helpers
 
@@ -77,8 +77,8 @@ proc close*(my: var JsonParser) {.inline.} =
   lexbase.close(my)
 
 proc isGiant*(my: JsonParser): bool {.inline.} =
-  ## returns whether the last ``tkInt|tkFloat`` token was too large for the fast path.
-  assert(my.tok in {tkInt, tkFloat})
+  ## returns whether the last ``tkInt`` token was too large for the fast path.
+  assert(my.tok == tkInt)
   my.giant
 
 proc getInt*(my: JsonParser): BiggestInt {.inline.} =
@@ -90,8 +90,7 @@ proc getInt*(my: JsonParser): BiggestInt {.inline.} =
 proc getFloat*(my: JsonParser): float {.inline.} =
   ## returns the number for the last ``tkFloat`` token.
   assert(my.tok == tkFloat)
-  if my.giant: parseFloat(my.a)
-  else: my.f
+  my.f
 
 proc getColumn*(my: JsonParser): int {.inline.} =
   ## get the current column the parser has arrived at.
@@ -226,33 +225,11 @@ template doCopy(a, b, startPos, endPos: untyped): untyped =
 
 proc i64(c: char): int64 {.inline.} = int64(ord(c) - ord('0'))
 
-proc pow10(e: int64): float {.inline.} =
-  const p10 = [1e-22, 1e-21, 1e-20, 1e-19, 1e-18, 1e-17, 1e-16, 1e-15, 1e-14,
-               1e-13, 1e-12, 1e-11, 1e-10, 1e-09, 1e-08, 1e-07, 1e-06, 1e-05,
-               1e-4, 1e-3, 1e-2, 1e-1, 1.0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7,
-               1e8, 1e9]
-  if -22 <= e and e <= 9:
-    return p10[e + 22]
-  result = 1.0
-  var base = 10.0
-  var e = e
-  if e < 0:
-    e = -e
-    base = 0.1
-  while e != 0:
-    if (e and 1) != 0:
-      result *= base
-    e = e shr 1
-    base *= base
-
 proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   let tokenStart = my.bufpos
   const Sign = {'+', '-'}
   var cursor = tokenStart
   var isInteger = false
-  var exponent = 0'i64
-  # Number of extra digits that were not folded into `my.i` (fast path caps at 18 digits).
-  var droppedDigits = 0
   var dotIndex = -1
   var digitCount = 0
   my.giant = false
@@ -267,7 +244,6 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
         my.i = 10 * my.i + ch.i64
       else:
         my.giant = true
-        droppedDigits.inc
       digitCount.inc
       cursor.inc
     elif ch == '.' and dotIndex < 0:
@@ -288,26 +264,27 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
     return tkError
   if my.buf[cursor] in {'E', 'e'}:
     cursor.inc
-    let exponentSignPos = cursor
     if my.buf[cursor] in Sign:
       cursor.inc
     let exponentStart = cursor
     while my.buf[cursor] in Digits:
-      exponent = 10 * exponent + my.buf[cursor].i64
       cursor.inc
     if cursor == exponentStart:
       return tkError
-    if my.buf[exponentSignPos] == '-':
-      exponent = -exponent
   elif isInteger:
     my.bufpos = cursor
     if my.giant:
       doCopy(my.a, my.buf, tokenStart, cursor)
     return tkInt
-  exponent += dotIndex - digitCount + droppedDigits
-  my.f = my.i.float * pow10(exponent)
-  if my.giant:
-    doCopy(my.a, my.buf, tokenStart, cursor)
+  # Keep integer parsing on the fast path, and parse floats from the lexer
+  # buffer directly to avoid allocating an intermediate token string.
+  let len = cursor - tokenStart
+  let consumed = parseFloat(my.buf, my.f, tokenStart)
+  if consumed != len:
+    return tkError
+  # Float value is already materialized in `my.f`; keep giant flag for int
+  # fallback only.
+  my.giant = false
   my.bufpos = cursor
   return tkFloat
 

@@ -27,7 +27,7 @@ proc lexNumber(input: string): (TokKind, bool) =
   defer: close(p)
   let tk = getTok(p)
   doAssert tk in {tkInt, tkFloat}, "expected numeric token for " & input
-  result = (tk, isGiant(p))
+  result = (tk, tk == tkInt and isGiant(p))
   doAssert getTok(p) == tkEof, "expected eof for " & input
 
 block:
@@ -120,8 +120,8 @@ block:
 
   let (tkBigFloat, giantBigFloat) = lexNumber("0." & "1".repeat(40))
   doAssert tkBigFloat == tkFloat
-  doAssert giantBigFloat
+  doAssert not giantBigFloat
 
   let (tkBigExpFloat, giantBigExpFloat) = lexNumber("9" & "0".repeat(40) & "e-5")
   doAssert tkBigExpFloat == tkFloat
-  doAssert giantBigExpFloat
+  doAssert not giantBigExpFloat
