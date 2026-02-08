@@ -464,14 +464,11 @@ proc fromFile*[T](path: string, dst: var T) =
   var f: File
   if not open(f, path, fmRead):
     raise newException(IOError, "cannot open file: " & path)
-  try:
-    fromJson(streams.open(f), dst)
-  finally:
-    close(f)
+  fromJson(streams.open(f), dst)
 
 proc fromFile*[T](path: string, t: typedesc[T]): T =
   ## Unmarshals the specified JSON file into the type specified.
-  result = fromFile(path, t)
+  fromFile(path, result)
 
 proc toJson*[T](x: T): string =
   ## Serializes the specified value to a JSON string.

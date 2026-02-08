@@ -1,4 +1,4 @@
-import jsonx, std/[enumerate, math, options, sets, tables]
+import jsonx, std/[enumerate, math, options, os, sets, tables]
 import jsonx/parsejson
 import jsonx/streams
 
@@ -105,6 +105,12 @@ block:
   let s = toJson(data)
   let a = fromJson(s, typeof data)
   assert a == data
+block:
+  let missing = "this_file_must_not_exist_jsonx_fromfile_typedesc_test_9F4B53D8.json"
+  if fileExists(missing):
+    removeFile(missing)
+  doAssertRaises(IOError):
+    discard fromFile(missing, tuple[x: int])
 block:
   let data = FooBar(v: "hello", t: 1.0)
   let s = toJson(data)
