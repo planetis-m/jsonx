@@ -150,15 +150,19 @@ proc readJson*(dst: var string; p: var JsonParser) =
     dst = ""
     discard getTok(p)
   elif p.tok == tkString:
-    dst = p.a
+    dst = getString(p)
     discard getTok(p)
   else:
     raiseParseErr(p, "string or null")
 
 proc readJson*(dst: var char; p: var JsonParser) =
-  if p.tok == tkString and len(p.a) == 1:
-    dst = p.a[0]
-    discard getTok(p)
+  if p.tok == tkString:
+    let s = getString(p)
+    if len(s) == 1:
+      dst = s[0]
+      discard getTok(p)
+    else:
+      raiseParseErr(p, "string of length 1 or int for a char")
   elif p.tok == tkInt:
     dst = char(p.getInt())
     discard getTok(p)
@@ -195,7 +199,7 @@ proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
 
 proc readJson*[T: enum](dst: var T; p: var JsonParser) =
   if p.tok == tkString:
-    dst = parseEnum[T](p.a)
+    dst = parseEnum[T](getString(p))
     discard getTok(p)
   elif p.tok == tkInt:
     dst = T(getInt(p))
@@ -240,7 +244,7 @@ proc readJson*[T](dst: var (Table[string, T]|OrderedTable[string, T]); p: var Js
   while p.tok != tkCurlyRi:
     if p.tok != tkString:
       raiseParseErr(p, "string literal as key")
-    var key = p.a
+    let key = getString(p)
     discard getTok(p)
     eat(p, tkColon)
     readJson(mgetOrPut(dst, key, default(T)), p)
@@ -317,7 +321,7 @@ template getKindValue(parser, tmpSym, kindSym, kindType) =
   tmpSym = (typeof tmpSym)(kindSym: kindTmp)
 
 template caseANormalized: untyped =
-  nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")))
+  nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newCall(bindSym"getString", parser)))
 
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind

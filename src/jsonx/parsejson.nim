@@ -36,7 +36,8 @@ type
     tkComma
 
   JsonParser* = object of BaseLexer ## the parser object.
-    a*: string
+    tokenStart: int
+    tokenLen: int
     i: BiggestInt
     f: float
     tok*: TokKind
@@ -66,7 +67,8 @@ proc open*(my: var JsonParser, input: Stream, filename: string;
   ## left untouched too.
   lexbase.open(my, input)
   my.filename = filename
-  my.a = ""
+  my.tokenStart = 0
+  my.tokenLen = 0
   my.rawStringLiterals = rawStringLiterals
 
 proc close*(my: var JsonParser) {.inline.} =
@@ -113,86 +115,107 @@ proc parseEscapedUTF16*(buf: cstring, pos: var int): int =
 
 proc parseString(my: var JsonParser): TokKind =
   result = tkString
-  var pos = my.bufpos + 1
-  if my.rawStringLiterals:
-    add(my.a, '"')
+  let quotePos = my.bufpos
+  var pos = quotePos + 1
+
   while true:
     case my.buf[pos]
     of '\0':
       result = tkError
       break
     of '"':
-      if my.rawStringLiterals:
-        add(my.a, '"')
       inc(pos)
       break
     of '\\':
-      if my.rawStringLiterals:
-        add(my.a, '\\')
-      case my.buf[pos+1]
-      of '\\', '"', '\'', '/':
-        add(my.a, my.buf[pos+1])
-        inc(pos, 2)
-      of 'b':
-        add(my.a, '\b')
-        inc(pos, 2)
-      of 'f':
-        add(my.a, '\f')
-        inc(pos, 2)
-      of 'n':
-        add(my.a, '\L')
-        inc(pos, 2)
-      of 'r':
-        add(my.a, '\C')
-        inc(pos, 2)
-      of 't':
-        add(my.a, '\t')
-        inc(pos, 2)
-      of 'v':
-        add(my.a, '\v')
+      case my.buf[pos + 1]
+      of '\0':
+        result = tkError
+        break
+      of '\\', '"', '\'', '/', 'b', 'f', 'n', 'r', 't', 'v':
         inc(pos, 2)
       of 'u':
-        if my.rawStringLiterals:
-          add(my.a, 'u')
         inc(pos, 2)
-        var pos2 = pos
         var r = parseEscapedUTF16(cstring(my.buf), pos)
         if r < 0:
+          result = tkError
           break
-        # Deal with surrogates
+        # Validate UTF-16 surrogate pairs while tokenizing.
         if (r and 0xfc00) == 0xd800:
-          if my.buf[pos] != '\\' or my.buf[pos+1] != 'u':
+          if my.buf[pos] != '\\' or my.buf[pos + 1] != 'u':
+            result = tkError
             break
           inc(pos, 2)
-          var s = parseEscapedUTF16(cstring(my.buf), pos)
-          if (s and 0xfc00) == 0xdc00 and s > 0:
-            r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
-          else:
+          let s = parseEscapedUTF16(cstring(my.buf), pos)
+          if not ((s and 0xfc00) == 0xdc00 and s > 0):
+            result = tkError
             break
-        if my.rawStringLiterals:
-          let length = pos - pos2
-          for i in 1 .. length:
-            if my.buf[pos2] in {'0'..'9', 'A'..'F', 'a'..'f'}:
-              add(my.a, my.buf[pos2])
-              inc pos2
-            else:
-              break
-        else:
-          add(my.a, toUTF8(Rune(r)))
       else:
-        # don't bother with the error
-        add(my.a, my.buf[pos])
+        # Keep legacy behavior for unknown escapes.
         inc(pos)
-    of '\c':
-      pos = lexbase.handleCR(my, pos)
-      add(my.a, '\c')
-    of '\L':
-      pos = lexbase.handleLF(my, pos)
-      add(my.a, '\L')
+    of '\c', '\L':
+      result = tkError
+      break
     else:
-      add(my.a, my.buf[pos])
       inc(pos)
+
+  if result == tkString:
+    if my.rawStringLiterals:
+      my.tokenStart = quotePos
+      my.tokenLen = pos - quotePos
+    else:
+      my.tokenStart = quotePos + 1
+      my.tokenLen = pos - quotePos - 2
   my.bufpos = pos # store back
+
+proc getString*(my: JsonParser): string {.inline.} =
+  ## returns the string literal for the last ``tkString`` token.
+  assert(my.tok == tkString)
+  if my.tokenLen <= 0:
+    result = ""
+  elif my.rawStringLiterals:
+    result = my.buf.substr(my.tokenStart, my.tokenStart + my.tokenLen - 1)
+  else:
+    var pos = my.tokenStart
+    let tokenEnd = my.tokenStart + my.tokenLen
+    while pos < tokenEnd:
+      if my.buf[pos] != '\\':
+        add(result, my.buf[pos])
+        inc(pos)
+      else:
+        case my.buf[pos + 1]
+        of '\\', '"', '\'', '/':
+          add(result, my.buf[pos + 1])
+          inc(pos, 2)
+        of 'b':
+          add(result, '\b')
+          inc(pos, 2)
+        of 'f':
+          add(result, '\f')
+          inc(pos, 2)
+        of 'n':
+          add(result, '\L')
+          inc(pos, 2)
+        of 'r':
+          add(result, '\C')
+          inc(pos, 2)
+        of 't':
+          add(result, '\t')
+          inc(pos, 2)
+        of 'v':
+          add(result, '\v')
+          inc(pos, 2)
+        of 'u':
+          inc(pos, 2)
+          var r = parseEscapedUTF16(cstring(my.buf), pos)
+          # parseString validates paired surrogates for us.
+          if (r and 0xfc00) == 0xd800:
+            inc(pos, 2) # skip '\u'
+            let s = parseEscapedUTF16(cstring(my.buf), pos)
+            r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
+          add(result, toUTF8(Rune(r)))
+        else:
+          add(result, '\\')
+          inc(pos)
 
 proc skip(my: var JsonParser) =
   var pos = my.bufpos
@@ -281,7 +304,8 @@ proc parseKeyword(my: var JsonParser): TokKind =
   result = tkError
 
 proc getTok*(my: var JsonParser): TokKind =
-  setLen(my.a, 0)
+  my.tokenStart = my.bufpos
+  my.tokenLen = 0
   skip(my) # skip whitespace, comments
   case my.buf[my.bufpos]
   of '-', '.', '0'..'9':
