@@ -12,7 +12,7 @@ import std/macros
 
 import jsonx/stringtrees
 
-proc strAtLe(s: string; idx: int; ch: char): bool {.inline.} =
+proc strAtLe*(s: string; idx: int; ch: char): bool {.inline.} =
   result = idx < s.len and s[idx] <= ch
 
 proc decodeSolution(dest: NimNode; s: seq[SearchNode]; i: int;
@@ -42,7 +42,7 @@ proc decodeSolution(dest: NimNode; s: seq[SearchNode]; i: int;
       var action = newTree(nnkStmtList)
       if foundSym.kind != nnkNilLit:
         action.add newAssignment(foundSym, newLit(true))
-      action.add newTree(nnkReturnStmt, ident(x[1]))
+      action.add newTree(nnkReturnStmt, parseExpr(x[1]))
       elifBranch.add action
       cond.add elifBranch
     dest.add cond
@@ -115,6 +115,31 @@ template matchEnum*(sel: untyped; e: typedesc; found: var bool;
   block:
     declareMatcher(localMatcher, e, ord(low(e)) - 1)
     localMatcher(sel, found, onError)
+
+macro declareIndexMatcher*(name: untyped; keys: static openArray[string]): untyped =
+  var a: seq[Key] = @[]
+  for i, k in keys:
+    a.add (k, $i)
+
+  var body = newStmtList()
+  genMatcher body, ident"sel", a
+  var bodyFound = newStmtList()
+  genMatcher bodyFound, ident"sel", a, ident"found"
+
+  template t(name, body, bodyFound: untyped): untyped {.dirty.} =
+    proc `name`(sel: auto; onError = -1): int =
+      body
+      return onError
+    proc `name`(sel: auto; found: var bool; onError = -1): int =
+      found = false
+      bodyFound
+      return onError
+  result = getAst t(name, body, bodyFound)
+
+template matchKeyIndex*(sel: untyped; keys: untyped; onError: int = -1): untyped =
+  block:
+    declareIndexMatcher(localMatcher, keys)
+    localMatcher(sel, onError)
 
 when isMainModule:
   type

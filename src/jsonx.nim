@@ -2,6 +2,9 @@ import std/[macros, strutils, options, tables, sets]
 import jsonx/[parsejson, streams, keymatcher]
 from std/typetraits import isNamedTuple, distinctBase
 
+proc strAtLe*(s: string; idx: int; ch: char): bool {.inline.} =
+  result = keymatcher.strAtLe(s, idx, ch)
+
 # serialization
 proc escapeJsonUnquoted*(x: string; s: Stream) =
   ## Converts a string `s` to its JSON representation without quotes.
@@ -326,6 +329,38 @@ template getKindValue(parser, tmpSym, kindSym, kindType) =
 template caseANormalized: untyped =
   nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newCall(bindSym"getString", parser)))
 
+proc isNormalizedFieldSelector(n: NimNode): bool =
+  result = n.kind == nnkCall and n.len == 2 and eqIdent(n[0], "nimIdentNormalize") and
+    n[1].kind == nnkCall and n[1].len == 2 and eqIdent(n[1][0], "getString")
+
+proc rewriteFieldCaseToMatcher(n, parser: NimNode): NimNode =
+  if n.kind == nnkCaseStmt and isNormalizedFieldSelector(n[0]):
+    var keys = newNimNode(nnkBracket)
+    var keyCount = 0
+    result = newNimNode(nnkCaseStmt)
+    result.add newCall(bindSym"matchKeyIndex", n[0], keys, newLit(-1))
+    var idx = 0
+    for i in 1..<n.len:
+      let branch = n[i]
+      case branch.kind
+      of nnkOfBranch:
+        let action = rewriteFieldCaseToMatcher(branch[^1], parser)
+        for j in 0..branch.len-2:
+          keys.add branch[j]
+          inc(keyCount)
+          result.add nnkOfBranch.newTree(newLit(idx), action)
+          inc(idx)
+      of nnkElse:
+        result.add nnkElse.newTree(rewriteFieldCaseToMatcher(branch[0], parser))
+      else:
+        result.add rewriteFieldCaseToMatcher(branch, parser)
+    if keyCount == 0:
+      result = n
+  else:
+    result = copyNimNode(n)
+    for it in n:
+      result.add rewriteFieldCaseToMatcher(it, parser)
+
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind
   of nnkEmpty:
@@ -391,7 +426,8 @@ macro assignObjectImpl(dst: typed; parser: JsonParser): untyped =
     foldObjectBody(typeSym, dst, parser)
   else:
     foldObjectBody(typeSym.getTypeImpl, dst, parser)
-  if x.kind != nnkNone: result.add x
+  if x.kind != nnkNone:
+    result.add rewriteFieldCaseToMatcher(x, parser)
 
 proc readJson*[T: object](dst: var T; p: var JsonParser) =
   eat(p, tkCurlyLe)
