@@ -1,5 +1,5 @@
 import std/[macros, strutils, options, tables, sets]
-import jsonx/[parsejson, streams]
+import jsonx/[parsejson, streams, keymatcher]
 from std/typetraits import isNamedTuple, distinctBase
 
 # serialization
@@ -199,7 +199,10 @@ proc readJson*[T: SomeFloat](dst: var T; p: var JsonParser) =
 
 proc readJson*[T: enum](dst: var T; p: var JsonParser) =
   if p.tok == tkString:
-    dst = parseEnum[T](getString(p))
+    var found = false
+    dst = matchEnum(p, T, found, low(T))
+    if not found:
+      raiseParseErr(p, "valid enum value")
     discard getTok(p)
   elif p.tok == tkInt:
     dst = T(getInt(p))

@@ -221,6 +221,105 @@ proc getString*(my: JsonParser): string {.inline.} =
           add(result, '\\')
           inc(pos)
 
+proc nextDecodedByte(my: JsonParser; pos: var int; tokenEnd: int;
+    pending: var string; pendingPos: var int; b: var char): bool =
+  if pendingPos < pending.len:
+    b = pending[pendingPos]
+    inc(pendingPos)
+    return true
+
+  if pos >= tokenEnd:
+    return false
+
+  if my.buf[pos] != '\\':
+    b = my.buf[pos]
+    inc(pos)
+    return true
+
+  case my.buf[pos + 1]
+  of '\\', '"', '\'', '/':
+    b = my.buf[pos + 1]
+    inc(pos, 2)
+    return true
+  of 'b':
+    b = '\b'
+    inc(pos, 2)
+    return true
+  of 'f':
+    b = '\f'
+    inc(pos, 2)
+    return true
+  of 'n':
+    b = '\L'
+    inc(pos, 2)
+    return true
+  of 'r':
+    b = '\C'
+    inc(pos, 2)
+    return true
+  of 't':
+    b = '\t'
+    inc(pos, 2)
+    return true
+  of 'v':
+    b = '\v'
+    inc(pos, 2)
+    return true
+  of 'u':
+    inc(pos, 2)
+    var r = parseEscapedUTF16(cstring(my.buf), pos)
+    if (r and 0xfc00) == 0xd800:
+      inc(pos, 2) # skip '\u'
+      let s = parseEscapedUTF16(cstring(my.buf), pos)
+      r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
+    pending = toUTF8(Rune(r))
+    pendingPos = 0
+    b = pending[pendingPos]
+    inc(pendingPos)
+    return true
+  else:
+    # Keep getString behavior for unknown escapes.
+    b = '\\'
+    inc(pos)
+    return true
+
+proc strAtLe*(my: JsonParser; idx: int; ch: char): bool {.inline.} =
+  ## Compare a decoded string byte at `idx` against `ch`.
+  assert(my.tok == tkString)
+  if my.rawStringLiterals:
+    let s = getString(my)
+    return idx < s.len and s[idx] <= ch
+  if idx < 0:
+    return false
+  let tokenEnd = my.tokenStart + my.tokenLen
+  var pos = my.tokenStart
+  var pending = ""
+  var pendingPos = 0
+  var i = 0
+  var b: char
+  while nextDecodedByte(my, pos, tokenEnd, pending, pendingPos, b):
+    if i == idx:
+      return b <= ch
+    inc(i)
+  result = false
+
+proc `==`*(my: JsonParser; s: string): bool {.inline.} =
+  ## Compare the current tkString token against `s` without materializing it.
+  assert(my.tok == tkString)
+  if my.rawStringLiterals:
+    return getString(my) == s
+  let tokenEnd = my.tokenStart + my.tokenLen
+  var pos = my.tokenStart
+  var pending = ""
+  var pendingPos = 0
+  var i = 0
+  var b: char
+  while nextDecodedByte(my, pos, tokenEnd, pending, pendingPos, b):
+    if i >= s.len or s[i] != b:
+      return false
+    inc(i)
+  result = i == s.len
+
 proc skip(my: var JsonParser) =
   var pos = my.bufpos
   while true:
