@@ -38,8 +38,6 @@ type
   JsonParser* = object of BaseLexer ## the parser object.
     tokenStart: int
     tokenLen: int
-    i: BiggestInt
-    f: float
     tok*: TokKind
     filename: string
     rawStringLiterals: bool
@@ -78,12 +76,18 @@ proc close*(my: var JsonParser) {.inline.} =
 proc getInt*(my: JsonParser): BiggestInt {.inline.} =
   ## returns the number for the last ``tkInt`` token.
   assert(my.tok == tkInt)
-  result = my.i
+  result = 0
+  try:
+    let parsedLen = parseBiggestInt(my.buf, result, my.tokenStart)
+    assert(parsedLen == my.tokenLen)
+  except ValueError:
+    assert(false, "invalid int token state")
 
 proc getFloat*(my: JsonParser): float {.inline.} =
   ## returns the number for the last ``tkFloat`` token.
   assert(my.tok == tkFloat)
-  result = my.f
+  let parsedLen = parseFloat(my.buf, result, my.tokenStart)
+  assert(parsedLen == my.tokenLen)
 
 proc getColumn*(my: JsonParser): int {.inline.} =
   ## get the current column the parser has arrived at.
@@ -231,20 +235,6 @@ proc skip(my: var JsonParser) =
       break
   my.bufpos = pos
 
-proc parseNumberValue(my: var JsonParser; tokenStart, tokenLen: int;
-    kind: TokKind): TokKind {.inline.} =
-  var L = 0
-  if kind == tkFloat:
-    L = parseFloat(my.buf, my.f, tokenStart)
-  else:
-    try:
-      L = parseBiggestInt(my.buf, my.i, tokenStart)
-    except ValueError:
-      return tkError
-  if L != tokenLen:
-    return tkError
-  result = kind
-
 proc parseNumber(my: var JsonParser): TokKind {.inline.} =
   let tokenStart = my.bufpos
   var pos = tokenStart
@@ -272,8 +262,9 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
       inc(pos)
 
   my.bufpos = pos
+  my.tokenStart = tokenStart
+  my.tokenLen = pos - tokenStart
   result = if hasDot or hasExp: tkFloat else: tkInt
-  result = parseNumberValue(my, tokenStart, pos - tokenStart, result)
 
 proc parseKeyword(my: var JsonParser): TokKind =
   let pos = my.bufpos
