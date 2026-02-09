@@ -141,3 +141,14 @@ Build flag: `-d:danger`
 | `jsonx (ints)` | `nim c -d:danger -r bench/benchmark_jsonx_ints.nim` | `0.099198606s` | `30.25MiB` |
 
 In this run, `jsonx` is about `2.57x` faster than `std/json`, `jsony` is about `2.39x` faster than `std/json`, and `eminim` is about `2.28x` faster than `std/json`. `jsonx` is about `1.08x` faster than `jsony`.
+
+### OpenAI API-like file benchmark
+
+This benchmark parses a generated chat-completions style payload (`bench/openai/openai_chat_payload.json`, ~75MiB, 60,000 sessions with message/tool-call/usage data) to better represent OpenAI API usage.
+
+| Benchmark | Command | Time | Memory |
+| --- | --- | --- | --- |
+| `jsonx (openai)` | `nim c -d:danger -r bench/openai/benchmark_jsonx.nim` | `0.191892137s` (median of 3) | `0B` |
+| `jsony (openai)` | `nim c -d:danger -r bench/openai/benchmark_jsony.nim` | `0.144781656s` (median of 3) | `0B` |
+
+In this run, `jsony` is about `1.33x` faster than `jsonx` on the OpenAI API-like workload.

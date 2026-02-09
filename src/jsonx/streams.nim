@@ -10,6 +10,11 @@
 ## Minimal low-level streams for lexbase/parsejson.
 ## Only the required pieces are kept.
 
+import std/paths
+
+when defined(nimPreviewSlimSystem):
+  import std/syncio
+
 type
   StreamKind* = enum
     skNone,
@@ -30,6 +35,10 @@ proc open*(f: File): Stream =
 
 proc open*(): Stream =
   Stream(kind: skNone)
+
+proc open*(filename: Path, mode: FileMode): Stream =
+  result = Stream(kind: skFile)
+  if not open(result.f, filename.string, mode): result = nil
 
 proc close*(s: Stream) =
   case s.kind

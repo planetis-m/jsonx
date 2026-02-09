@@ -1,4 +1,4 @@
-import std/[macros, strutils, options, tables, sets]
+import std/[macros, strutils, options, tables, sets, paths]
 import jsonx/[parsejson, streams]
 from std/typetraits import isNamedTuple, distinctBase
 
@@ -452,12 +452,12 @@ proc fromJson*[T](input: string, dst: var T) =
   let s = streams.open(input)
   fromJson(s, dst)
 
-proc fromFile*[T](path: string, dst: var T) =
+proc fromFile*[T](path: Path, dst: var T) =
   ## Unmarshals the specified JSON file into the location specified.
-  let f = open(path, fmRead)
-  fromJson(streams.open(f), dst)
+  let s = streams.open(path, fmRead)
+  fromJson(s, dst)
 
-proc fromFile*[T](path: string, t: typedesc[T]): T =
+proc fromFile*[T](path: Path, t: typedesc[T]): T =
   ## Unmarshals the specified JSON file into the type specified.
   fromFile(path, result)
 

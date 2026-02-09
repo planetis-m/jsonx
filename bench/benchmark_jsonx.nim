@@ -2,7 +2,7 @@
 
 {.define: jsonxLenient.}
 
-import std/[strutils, times]
+import std/[strutils, times, paths]
 import jsonx
 
 type
@@ -15,7 +15,7 @@ type
     coordinates: seq[Coordinate]
 
 proc main =
-  let jobj = fromFile("1.json", BenchmarkInput)
+  let jobj = fromFile(Path"1.json", BenchmarkInput)
 
   let coordinates = jobj.coordinates
   let len = float(coordinates.len)
