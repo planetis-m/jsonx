@@ -1,5 +1,6 @@
-import std/[macros, strutils, options, tables, sets]
-import jsonx/[parsejson, streams]
+import std/[macros, options, tables, sets]
+from std/strutils import toHex, nimIdentNormalize
+import jsonx/[parsejson, streams, keymatcher]
 from std/typetraits import isNamedTuple, distinctBase
 
 # serialization
