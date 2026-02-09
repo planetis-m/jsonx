@@ -117,6 +117,15 @@ for item in jsonItems(s, Person):
   discard
 ```
 
+## Compile-Time Defines
+
+Enable with `-d:<define>` or a module pragma like `{.define: <define>.}`.
+
+| Define | Default | Effect |
+| --- | --- | --- |
+| `jsonxLenient` | off | Unknown object fields are skipped during deserialization instead of raising a parse error. |
+| `jsonxNormalized` | off | Object field matching uses `nimIdentNormalize` (case/underscore-insensitive Nim-style matching) instead of exact JSON key matching. |
+
 ## Tests
 
 Run from the repo root:

@@ -248,7 +248,10 @@ block:
     var x: tuple[]
     fromJson("[1]", x)
 block:
-  let s = streams.open("""{"va_l": {"vaLue": "stuff"}}""")
+  when defined(jsonxNormalized):
+    let s = streams.open("""{"va_l": {"vaLue": "stuff"}}""")
+  else:
+    let s = streams.open("""{"val": {"value": "stuff"}}""")
   let a = s.fromJson(FooBaz)
   assert(a.val[0] == Baz"stuff")
 block:

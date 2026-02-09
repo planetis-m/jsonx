@@ -316,8 +316,20 @@ template getKindValue(parser, tmpSym, kindSym, kindType) =
   readJson(kindTmp, parser)
   tmpSym = (typeof tmpSym)(kindSym: kindTmp)
 
+template jsonxFieldCaseKey(parser): untyped =
+  when defined(jsonxNormalized):
+    newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a"))
+  else:
+    newDotExpr(parser, ident"a")
+
+template jsonxFieldLiteral(name: string): untyped =
+  when defined(jsonxNormalized):
+    newLit(nimIdentNormalize(name))
+  else:
+    newLit(name)
+
 template caseANormalized: untyped =
-  nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")))
+  nnkCaseStmt.newTree(jsonxFieldCaseKey(parser))
 
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind
@@ -332,12 +344,12 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   of nnkIdentDefs:
     expectLen(typeNode, 3)
     let fieldSym = typeNode[0]
-    result = nnkOfBranch.newTree(newLit(nimIdentNormalize(fieldSym.strVal)),
+    result = nnkOfBranch.newTree(jsonxFieldLiteral(fieldSym.strVal),
         getAst(getFieldValue(parser, tmpSym, fieldSym)))
   of nnkRecCase:
     let kindSym = typeNode[0][0]
     let kindType = typeNode[0][1]
-    result = nnkOfBranch.newTree(newLit(nimIdentNormalize(kindSym.strVal)),
+    result = nnkOfBranch.newTree(jsonxFieldLiteral(kindSym.strVal),
         getAst(getKindValue(parser, tmpSym, kindSym, kindType)))
     let inner = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
     for i in 1..<typeNode.len:
