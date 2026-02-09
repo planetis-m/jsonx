@@ -320,6 +320,64 @@ template getKindValue(parser, tmpSym, kindSym, kindType) =
 template caseANormalized: untyped =
   nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")))
 
+proc isNormalizedKeyCaseSelector(node: NimNode): bool =
+  if node.kind != nnkCall or node.len != 2:
+    return false
+  if node[0].kind notin {nnkSym, nnkIdent}:
+    return false
+  result = node[0].strVal == "nimIdentNormalize"
+
+proc lowerStringCasesToKeyMatcher(node: NimNode): NimNode =
+  case node.kind
+  of nnkCaseStmt:
+    if node.len >= 2 and isNormalizedKeyCaseSelector(node[0]):
+      var keyLiterals = newNimNode(nnkBracket)
+      var mapped = 0
+      var loweredCase = newNimNode(nnkCaseStmt)
+      for i in 1..<node.len:
+        let branch = node[i]
+        case branch.kind
+        of nnkOfBranch:
+          var newBranch = newNimNode(nnkOfBranch)
+          for j in 0..<branch.len-1:
+            let label = branch[j]
+            if label.kind notin {nnkStrLit, nnkTripleStrLit}:
+              # Fallback if this isn't a pure string-key case.
+              var generic = copyNimNode(node)
+              for c in node:
+                generic.add lowerStringCasesToKeyMatcher(c)
+              return generic
+            keyLiterals.add newLit(label.strVal)
+            newBranch.add newLit(mapped)
+            inc mapped
+          newBranch.add lowerStringCasesToKeyMatcher(branch[^1])
+          loweredCase.add newBranch
+        of nnkElse:
+          var newElse = newNimNode(nnkElse)
+          for c in branch:
+            newElse.add lowerStringCasesToKeyMatcher(c)
+          loweredCase.add newElse
+        else:
+          var generic = copyNimNode(node)
+          for c in node:
+            generic.add lowerStringCasesToKeyMatcher(c)
+          return generic
+      if mapped == 0:
+        var generic = copyNimNode(node)
+        for c in node:
+          generic.add lowerStringCasesToKeyMatcher(c)
+        return generic
+      loweredCase.insert(0, newCall(bindSym"keyIndex", node[0], keyLiterals))
+      return loweredCase
+    else:
+      result = copyNimNode(node)
+      for c in node:
+        result.add lowerStringCasesToKeyMatcher(c)
+  else:
+    result = copyNimNode(node)
+    for c in node:
+      result.add lowerStringCasesToKeyMatcher(c)
+
 proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind
   of nnkEmpty:
@@ -385,7 +443,8 @@ macro assignObjectImpl(dst: typed; parser: JsonParser): untyped =
     foldObjectBody(typeSym, dst, parser)
   else:
     foldObjectBody(typeSym.getTypeImpl, dst, parser)
-  if x.kind != nnkNone: result.add x
+  let lowered = lowerStringCasesToKeyMatcher(x)
+  if lowered.kind != nnkNone: result.add lowered
 
 proc readJson*[T: object](dst: var T; p: var JsonParser) =
   eat(p, tkCurlyLe)
