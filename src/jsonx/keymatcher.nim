@@ -8,7 +8,7 @@
 ## This produces a binary tree search that is faster than
 ## hashing as hashing requires 2 passes over the string.
 
-import std/macros
+import std/[macros, strutils]
 import jsonx/stringtrees
 
 when defined(nimPreviewSlimSystem):
@@ -46,9 +46,45 @@ proc decodeSolution(dest: NimNode; s: seq[SearchNode]; i: int;
       cond.add elifBranch
     dest.add cond
 
+proc decodeSolutionToInt(dest: NimNode; s: seq[SearchNode]; i: int;
+                         selector: NimNode) =
+  case s[i].kind
+  of ForkedSearch:
+    let f = forked(s, i)
+
+    var cond = newTree(nnkIfStmt)
+    var elifBranch = newTree(nnkElifBranch)
+    elifBranch.add newCall(bindSym"strAtLe", selector, newLit(f.best[1]), newLit(f.best[0]))
+
+    decodeSolutionToInt elifBranch, s, f.thenA, selector
+
+    var elseBranch = newTree(nnkElse)
+    decodeSolutionToInt elseBranch, s, f.elseA, selector
+
+    cond.add elifBranch
+    cond.add elseBranch
+    dest.add cond
+
+  of LinearSearch:
+    var cond = newTree(nnkIfStmt)
+    for x in s[i].choices:
+      var elifBranch = newTree(nnkElifBranch)
+      elifBranch.add newCall(bindSym"==", selector, newLit(x[0]))
+      var action = newTree(nnkStmtList, newTree(nnkReturnStmt, newLit(parseInt(x[1]))))
+      elifBranch.add action
+      cond.add elifBranch
+    dest.add cond
+
 proc genMatcher(body, selector: NimNode; a: openArray[Key]) =
   let solution = createSearchTree a
   decodeSolution body, solution, 0, selector
+
+proc genIndexMatcher(body, selector: NimNode; keys: openArray[string]) =
+  var a: seq[Key] = @[]
+  for i, k in keys:
+    a.add (k, $i)
+  let solution = createSearchTree a
+  decodeSolutionToInt body, solution, 0, selector
 
 proc enumKeys(impl: NimNode; start: int; prefixLen: int): seq[Key] =
   var fVal = ""
@@ -117,6 +153,26 @@ macro parseEnumBody(e: typedesc; selector: untyped): untyped =
 
 func parseEnum*[T: enum](s: string): T =
   parseEnumBody(T, s)
+
+macro declareIndexMatcher*(name: untyped;
+                           keys: static openArray[string]): untyped =
+  var body = newStmtList()
+  genIndexMatcher(body, ident"sel", keys)
+  template t(name, body: untyped): untyped {.dirty.} =
+    proc `name`*(sel: string; onError = -1): int =
+      body
+      return onError
+  result = getAst t(name, body)
+
+macro keyIndex*(selector: untyped;
+                keys: static openArray[string]): untyped =
+  let selSym = genSym(nskParam, "sel")
+  var body = newStmtList()
+  genIndexMatcher(body, selSym, keys)
+  result = quote do:
+    (proc(`selSym`: string): int =
+      `body`
+      return -1)(`selector`)
 
 when isMainModule:
   type
