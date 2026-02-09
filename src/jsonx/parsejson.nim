@@ -119,6 +119,37 @@ proc addSpan(dst: var string; src: string; startPos, endPos: int) {.inline.} =
   setLen(dst, oldLen + n)
   copyMem(addr dst[oldLen], addr src[startPos], n)
 
+when defined(jsonxRawParseInt):
+  proc rawParseBiggestInt(s: openArray[char], b: var BiggestInt; start = 0): int {.inline.} =
+    var
+      sign: BiggestInt = -1
+      i = start
+    if i < s.len:
+      if s[i] == '+':
+        inc(i)
+      elif s[i] == '-':
+        inc(i)
+        sign = 1
+
+    if i < s.len and s[i] in {'0'..'9'}:
+      b = 0
+      while i < s.len and s[i] in {'0'..'9'}:
+        let c = ord(s[i]) - ord('0')
+        if b >= (low(BiggestInt) + c) div 10:
+          b = b * 10 - c
+        else:
+          return 0
+        inc(i)
+        while i < s.len and s[i] == '_':
+          inc(i) # underscores are allowed and ignored
+
+      if sign == -1 and b == low(BiggestInt):
+        return 0
+      b = b * sign
+      result = i - start
+    else:
+      result = 0
+
 proc parseString(my: var JsonParser): TokKind =
   result = tkString
   var pos = my.bufpos + 1
@@ -230,10 +261,13 @@ proc parseNumberValue(my: var JsonParser; tokenStart, tokenLen: int;
   if kind == tkFloat:
     L = parseFloat(my.buf, my.f, tokenStart)
   else:
-    try:
-      L = parseBiggestInt(my.buf, my.i, tokenStart)
-    except ValueError:
-      return tkError
+    when defined(jsonxRawParseInt):
+      L = rawParseBiggestInt(my.buf, my.i, tokenStart)
+    else:
+      try:
+        L = parseBiggestInt(my.buf, my.i, tokenStart)
+      except ValueError:
+        return tkError
   if L != tokenLen:
     return tkError
   result = kind
