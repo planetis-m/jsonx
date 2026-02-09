@@ -290,14 +290,6 @@ proc skipJson(p: var JsonParser) =
   of tkError, tkCurlyRi, tkBracketRi, tkColon, tkComma, tkEof:
     raiseParseErr(p, "{")
 
-template readFieldsInner(parser, body) =
-  expectObjectSeparator(parser)
-  while parser.tok != tkCurlyRi:
-    if parser.tok != tkString:
-      raiseParseErr(parser, "string literal as key")
-    body
-    expectObjectSeparator(parser)
-
 template raiseWrongKey(parser) =
   when defined(jsonxLenient):
     discard getTok(parser)
@@ -305,20 +297,42 @@ template raiseWrongKey(parser) =
     skipJson(parser)
   else: raiseParseErr(parser, "valid object field")
 
-template getFieldValue(parser, tmpSym, fieldSym) =
-  discard getTok(parser)
-  eat(parser, tkColon)
-  readJson(tmpSym.fieldSym, parser)
+proc normalizedParserKey(parser: NimNode): NimNode =
+  newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a"))
 
-template getKindValue(parser, tmpSym, kindSym, kindType) =
-  discard getTok(parser)
-  eat(parser, tkColon)
-  var kindTmp: kindType
-  readJson(kindTmp, parser)
-  tmpSym = (typeof tmpSym)(kindSym: kindTmp)
+proc buildFieldReadStmt(parser, tmpSym, fieldSym: NimNode): NimNode =
+  let dstField = newDotExpr(tmpSym, fieldSym)
+  result = quote do:
+    discard getTok(`parser`)
+    eat(`parser`, tkColon)
+    readJson(`dstField`, `parser`)
 
-template caseANormalized: untyped =
-  nnkCaseStmt.newTree(newCall(bindSym"nimIdentNormalize", newDotExpr(parser, ident"a")))
+proc buildKindReadStmt(parser, tmpSym, kindSym, kindType: NimNode): NimNode =
+  let kindTmp = genSym(nskVar, "kindTmp")
+  result = quote do:
+    discard getTok(`parser`)
+    eat(`parser`, tkColon)
+    var `kindTmp`: `kindType`
+    readJson(`kindTmp`, `parser`)
+    `tmpSym` = (typeof `tmpSym`)(`kindSym`: `kindTmp`)
+
+proc buildReadFieldsLoop(parser, body: NimNode): NimNode =
+  result = quote do:
+    expectObjectSeparator(`parser`)
+    while `parser`.tok != tkCurlyRi:
+      if `parser`.tok != tkString:
+        raiseParseErr(`parser`, "string literal as key")
+      `body`
+      expectObjectSeparator(`parser`)
+
+proc buildNormalizedKeyCase(parser: NimNode; branches: openArray[NimNode];
+                            includeElse: bool): NimNode =
+  result = nnkCaseStmt.newTree(normalizedParserKey(parser))
+  for br in branches:
+    if br.kind != nnkNone:
+      result.add br
+  if includeElse:
+    result.add nnkElse.newTree(getAst(raiseWrongKey(parser)))
 
 proc isNormalizedKeyCaseSelector(node: NimNode): bool =
   if node.kind != nnkCall or node.len != 2:
@@ -330,49 +344,40 @@ proc isNormalizedKeyCaseSelector(node: NimNode): bool =
 proc lowerStringCasesToKeyMatcher(node: NimNode): NimNode =
   case node.kind
   of nnkCaseStmt:
-    if node.len >= 2 and isNormalizedKeyCaseSelector(node[0]):
-      var keyLiterals = newNimNode(nnkBracket)
-      var mapped = 0
-      var loweredCase = newNimNode(nnkCaseStmt)
-      for i in 1..<node.len:
-        let branch = node[i]
-        case branch.kind
-        of nnkOfBranch:
-          var newBranch = newNimNode(nnkOfBranch)
-          for j in 0..<branch.len-1:
-            let label = branch[j]
-            if label.kind notin {nnkStrLit, nnkTripleStrLit}:
-              # Fallback if this isn't a pure string-key case.
-              var generic = copyNimNode(node)
-              for c in node:
-                generic.add lowerStringCasesToKeyMatcher(c)
-              return generic
-            keyLiterals.add newLit(label.strVal)
-            newBranch.add newLit(mapped)
-            inc mapped
-          newBranch.add lowerStringCasesToKeyMatcher(branch[^1])
-          loweredCase.add newBranch
-        of nnkElse:
-          var newElse = newNimNode(nnkElse)
-          for c in branch:
-            newElse.add lowerStringCasesToKeyMatcher(c)
-          loweredCase.add newElse
-        else:
-          var generic = copyNimNode(node)
-          for c in node:
-            generic.add lowerStringCasesToKeyMatcher(c)
-          return generic
-      if mapped == 0:
-        var generic = copyNimNode(node)
-        for c in node:
-          generic.add lowerStringCasesToKeyMatcher(c)
-        return generic
-      loweredCase.insert(0, newCall(bindSym"keyIndex", node[0], keyLiterals))
-      return loweredCase
-    else:
-      result = copyNimNode(node)
-      for c in node:
-        result.add lowerStringCasesToKeyMatcher(c)
+    var lowered = newNimNode(nnkCaseStmt)
+    lowered.add copyNimTree(node[0])
+    for i in 1..<node.len:
+      lowered.add lowerStringCasesToKeyMatcher(node[i])
+
+    if not isNormalizedKeyCaseSelector(node[0]):
+      return lowered
+
+    var keyLiterals = newNimNode(nnkBracket)
+    var mapped = 0
+    var remapped = newNimNode(nnkCaseStmt)
+    for i in 1..<lowered.len:
+      let branch = lowered[i]
+      case branch.kind
+      of nnkOfBranch:
+        var newBranch = newNimNode(nnkOfBranch)
+        for j in 0..<branch.len-1:
+          let label = branch[j]
+          if label.kind notin {nnkStrLit, nnkTripleStrLit}:
+            return lowered
+          keyLiterals.add newLit(label.strVal)
+          newBranch.add newLit(mapped)
+          inc mapped
+        newBranch.add copyNimTree(branch[^1])
+        remapped.add newBranch
+      of nnkElse:
+        remapped.add copyNimTree(branch)
+      else:
+        return lowered
+    if mapped == 0:
+      return lowered
+
+    remapped.insert(0, newCall(bindSym"keyIndex", lowered[0], keyLiterals))
+    return remapped
   else:
     result = copyNimNode(node)
     for c in node:
@@ -382,39 +387,45 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
   case typeNode.kind
   of nnkEmpty:
     result = newNimNode(nnkNone)
-  of nnkRecList, nnkTupleTy:
-    result = caseANormalized()
-    for it in typeNode:
-      let x = foldObjectBody(it, tmpSym, parser)
-      if x.kind != nnkNone: result.add x
-    result.add nnkElse.newTree(getAst(raiseWrongKey(parser)))
   of nnkIdentDefs:
     expectLen(typeNode, 3)
     let fieldSym = typeNode[0]
-    result = nnkOfBranch.newTree(newLit(nimIdentNormalize(fieldSym.strVal)),
-        getAst(getFieldValue(parser, tmpSym, fieldSym)))
+    result = nnkOfBranch.newTree(
+      newLit(nimIdentNormalize(fieldSym.strVal)),
+      buildFieldReadStmt(parser, tmpSym, fieldSym)
+    )
+  of nnkRecList, nnkTupleTy:
+    var branches: seq[NimNode] = @[]
+    for it in typeNode:
+      let x = foldObjectBody(it, tmpSym, parser)
+      if x.kind != nnkNone:
+        branches.add x
+    result = buildNormalizedKeyCase(parser, branches, includeElse = true)
   of nnkRecCase:
     let kindSym = typeNode[0][0]
     let kindType = typeNode[0][1]
-    result = nnkOfBranch.newTree(newLit(nimIdentNormalize(kindSym.strVal)),
-        getAst(getKindValue(parser, tmpSym, kindSym, kindType)))
-    let inner = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
+    let variantCase = nnkCaseStmt.newTree(nnkDotExpr.newTree(tmpSym, kindSym))
     for i in 1..<typeNode.len:
       let x = foldObjectBody(typeNode[i], tmpSym, parser)
-      if x.kind != nnkNone: inner.add x
-    result[^1].add getAst(readFieldsInner(parser, inner))
+      if x.kind != nnkNone:
+        variantCase.add x
+    var branchBody = newStmtList()
+    branchBody.add buildKindReadStmt(parser, tmpSym, kindSym, kindType)
+    branchBody.add buildReadFieldsLoop(parser, variantCase)
+    result = nnkOfBranch.newTree(newLit(nimIdentNormalize(kindSym.strVal)), branchBody)
   of nnkOfBranch, nnkElse:
     result = copyNimNode(typeNode)
     for i in 0..typeNode.len-2:
       result.add copyNimTree(typeNode[i])
-    let inner = newNimNode(nnkStmtListExpr)
-    if typeNode[^1].kind == nnkIdentDefs:
-      inner.add caseANormalized()
     let x = foldObjectBody(typeNode[^1], tmpSym, parser)
-    if x.kind == nnkCaseStmt: inner.add x
-    elif x.kind != nnkNone: inner[^1].add x
-    if typeNode[^1].kind == nnkIdentDefs:
-      inner[^1].add nnkElse.newTree(getAst(raiseWrongKey(parser)))
+    var inner = newStmtList()
+    case x.kind
+    of nnkNone:
+      inner.add getAst(raiseWrongKey(parser))
+    of nnkOfBranch, nnkElse:
+      inner.add buildNormalizedKeyCase(parser, [x], includeElse = true)
+    else:
+      inner.add x
     result.add inner
   of nnkObjectTy:
     expectKind(typeNode[0], nnkEmpty)
@@ -426,13 +437,15 @@ proc foldObjectBody(typeNode, tmpSym, parser: NimNode): NimNode =
       while impl.kind in {nnkRefTy, nnkPtrTy}:
         impl = getTypeImpl(impl[0])
       result = foldObjectBody(impl, tmpSym, parser)
-    let body = typeNode[2]
-    let x = foldObjectBody(body, tmpSym, parser)
-    if result.kind != nnkNone:
-      if x.kind != nnkNone: # merge case statements
-        expectKind(result, nnkCaseStmt)
-        for i in 1..x.len-2: result.insert(result.len-1, x[i])
-    else: result = x
+    let x = foldObjectBody(typeNode[2], tmpSym, parser)
+    if result.kind == nnkNone:
+      result = x
+    elif x.kind != nnkNone:
+      expectKind(result, nnkCaseStmt)
+      expectKind(x, nnkCaseStmt)
+      if x.len > 2: # splice branches before trailing else
+        for i in 1 ..< x.len-1:
+          result.insert(result.len-1, x[i])
   else:
     error("unhandled kind: " & $typeNode.kind, typeNode)
 
