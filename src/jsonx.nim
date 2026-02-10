@@ -266,7 +266,7 @@ proc readJson*[T](dst: var Option[T]; p: var JsonParser) =
     dst = none[T]()
     discard getTok(p)
 
-proc skipJson(p: var JsonParser) =
+proc skipJson*(p: var JsonParser) =
   case p.tok
   of tkString, tkInt, tkFloat, tkTrue, tkFalse, tkNull:
     discard getTok(p)
