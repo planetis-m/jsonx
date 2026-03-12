@@ -117,6 +117,25 @@ proc writeJson*(s: Stream; x: ChatCompletionMessageContent) =
     writeJson(s, x.parts)
 ```
 
+Capture and re-emit a raw JSON fragment:
+
+```nim
+import jsonx
+
+type
+  Envelope = object
+    payload: RawJson
+
+let env = fromJson(
+  """{"payload": { "answer": [1, 2, 3], "ok": true }}""",
+  Envelope
+)
+
+# RawJson stores normalized JSON text.
+doAssert string(env.payload) == """{"answer":[1,2,3],"ok":true}"""
+doAssert toJson(env) == """{"payload":{"answer":[1,2,3],"ok":true}}"""
+```
+
 State-aware output (emit only fields relevant to the current status):
 
 ```nim

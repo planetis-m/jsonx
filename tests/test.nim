@@ -84,6 +84,11 @@ type
     choices: seq[ChatChoice]
   LenientKnown = object
     known: int
+  RawJsonHolder = object
+    payload: RawJson
+
+proc rawText(x: RawJson): string =
+  result = string(x)
 
 proc readJson(dst: var Baz; p: var JsonParser) =
   var tmp: string
@@ -187,6 +192,28 @@ block:
   let data = "hello world"
   let a = jsonToFromString(data)
   assert a == data
+block:
+  let raw = fromJson(""" { "answer" : [1, {"x" : "\u0041"}], "ok" : true } """, RawJson)
+  doAssert rawText(raw) == """{"answer":[1,{"x":"A"}],"ok":true}"""
+  doAssert toJson(raw) == rawText(raw)
+block:
+  let raw = fromJson(""" "\u0041\n" """, RawJson)
+  doAssert rawText(raw) == "\"A\\n\""
+  doAssert fromJson(toJson(raw), string) == "A\n"
+block:
+  let data = RawJsonHolder(
+    payload: RawJson("""{"x":1,"items":[true,null,"ok"]}""")
+  )
+  let s = toJsonString(data)
+  doAssert s == """{"payload":{"x":1,"items":[true,null,"ok"]}}"""
+  let parsed = fromJson("""{"payload": { "x" : 1, "items" : [true, null, "ok"] }}""", RawJsonHolder)
+  doAssert rawText(parsed.payload) == """{"x":1,"items":[true,null,"ok"]}"""
+block:
+  doAssertRaises(JsonParsingError):
+    discard fromJson("""{"x":[1,}""", RawJson)
+block:
+  let invalid = RawJson("""{"unterminated":]""")
+  doAssert toJson(invalid) == """{"unterminated":]"""
 block:
   let data = @["αβγ", "δεζη", "θικλμ"]
   let a = jsonToFromString(data)
