@@ -118,6 +118,63 @@ proc writeJson*(s: Stream; x: ChatCompletionMessageContent) =
     writeJson(s, x.parts)
 ```
 
+Model a forward-compatible `ResponseOutput` item with typed message data and an opaque fallback:
+
+```nim
+proc appendRawField(dst: var string; name: string; p: var JsonParser) =
+  if dst.len == 0:
+    dst.add('{')
+  else:
+    dst.add(',')
+  escapeJson(name, dst)
+  dst.add(':')
+  appendRawJson(dst, p)
+
+proc readJson*(dst: var ResponseOutput; p: var JsonParser;
+               unknownFields: UnknownFieldPolicy) =
+  var id, status, role: string
+  var kind: ResponseOutputKind
+  var content: seq[ResponseOutputPart]
+  var extra = ""
+
+  eat(p, tkCurlyLe)
+  while p.tok != tkCurlyRi:
+    if p.tok != tkString:
+      raiseParseErr(p, "string literal as key")
+    let fieldName = p.a
+    discard getTok(p)
+    eat(p, tkColon)
+    case fieldName
+    of "id": readJson(id, p, unknownFields)
+    of "status": readJson(status, p, unknownFields)
+    of "type": readJson(kind, p, unknownFields)
+    of "role": readJson(role, p, unknownFields)
+    of "content": readJson(content, p, unknownFields)
+    else: appendRawField(extra, fieldName, p)
+
+    if p.tok == tkComma:
+      discard getTok(p)
+    elif p.tok != tkCurlyRi:
+      raiseParseErr(p, "',' or '}'")
+  eat(p, tkCurlyRi)
+
+  case kind
+  of message:
+    if unknownFields == ufReject and extra.len > 0:
+      raiseParseErr(p, "known field for a message output")
+    dst = ResponseOutput(
+      id: id, status: status, `type`: kind, shape: outputMessage,
+      message: ResponseOutputMessage(role: role, content: content)
+    )
+  else:
+    if extra.len > 0:
+      extra.add('}')
+    dst = ResponseOutput(
+      id: id, status: status, `type`: kind, shape: outputOpaque,
+      extraFields: RawJson(extra)
+    )
+```
+
 Work with arbitrary JSON payloads:
 
 Use `RawJson` when a field needs to carry JSON without a dedicated Nim type.

@@ -284,6 +284,11 @@ proc writeParsedJson(dst: var string; p: var JsonParser; normalized: static[bool
   of tkError, tkNumberError, tkCurlyRi, tkBracketRi, tkColon, tkComma, tkEof:
     raiseParseErr(p, "JSON value")
 
+proc appendRawJson*(dst: var string; p: var JsonParser) =
+  ## Appends the current JSON value in the representation used by `RawJson`.
+  ## Consumes that value from `p`.
+  writeParsedJson(dst, p, normalized = false)
+
 proc readJson*(dst: var string; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   if p.tok == tkNull:
     dst = ""
@@ -296,7 +301,7 @@ proc readJson*(dst: var string; p: var JsonParser; unknownFields: UnknownFieldPo
 
 proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
   var tmp = ""
-  writeParsedJson(tmp, p, normalized = false)
+  appendRawJson(tmp, p)
   dst = RawJson(ensureMove(tmp))
 
 proc readJson*(dst: var CanonRawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =

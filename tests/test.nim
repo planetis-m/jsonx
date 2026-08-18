@@ -314,6 +314,16 @@ block:
   readJson(raw, p, ufSkip)
   doAssert rawText(raw) == """{"k":[1,2,true]}"""
 block:
+  let s = streams.open("""{"k": [1, 2, true]}""")
+  var p: JsonParser
+  open(p, s, "inline")
+  defer:
+    close(p)
+  discard getTok(p)
+  var raw = "prefix:"
+  appendRawJson(raw, p)
+  doAssert raw == """prefix:{"k":[1,2,true]}"""
+block:
   doAssertRaises(JsonParsingError):
     discard fromJson("""{"x":[1,}""", RawJson)
 block:
