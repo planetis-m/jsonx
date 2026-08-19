@@ -138,6 +138,8 @@ proc parseString(my: var JsonParser): TokKind =
   if my.rawStringLiterals:
     add(my.a, '"')
   while true:
+    while my.buf[pos] notin {'\0', '"', '\\', '\c', '\L'}:
+      inc(pos)
     case my.buf[pos]
     of '\0':
       addSpan(my.a, my.buf, spanStart, pos)

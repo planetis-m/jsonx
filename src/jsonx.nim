@@ -1,4 +1,5 @@
-import std/[algorithm, enumutils, hashes, macros, math, strutils, options, tables, sets, paths]
+import std/[algorithm, enumutils, formatfloat, hashes, macros, math, strutils,
+  options, tables, sets, paths]
 import jsonx/[parsejson, streams]
 from std/typetraits import isNamedTuple, distinctBase, HoleyEnum
 
@@ -259,10 +260,10 @@ proc writeParsedJson(dst: var string; p: var JsonParser; normalized: static[bool
     escapeJson(p.a, dst)
     discard getTok(p)
   of tkInt:
-    dst.add($p.getInt())
+    dst.addInt(p.getInt())
     discard getTok(p)
   of tkFloat:
-    dst.add($p.getFloat())
+    dst.addFloatRoundtrip(p.getFloat())
     discard getTok(p)
   of tkTrue:
     dst.add("true")
@@ -308,12 +309,12 @@ proc readJson*(dst: var string; p: var JsonParser; unknownFields: UnknownFieldPo
     raiseParseErr(p, "string or null")
 
 proc readJson*(dst: var RawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  var tmp = ""
+  var tmp = newStringOfCap(64)
   appendRawJson(tmp, p)
   dst = RawJson(ensureMove(tmp))
 
 proc readJson*(dst: var CanonRawJson; p: var JsonParser; unknownFields: UnknownFieldPolicy) =
-  var tmp = ""
+  var tmp = newStringOfCap(64)
   writeParsedJson(tmp, p, normalized = true)
   dst = CanonRawJson(ensureMove(tmp))
 

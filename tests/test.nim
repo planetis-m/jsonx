@@ -271,6 +271,12 @@ block:
   doAssert rawText(raw) == """{"answer":[1,{"x":"A"}],"ok":true}"""
   doAssert toJson(raw) == rawText(raw)
 block:
+  doAssert rawText(fromJson("-9223372036854775808", RawJson)) ==
+    "-9223372036854775808"
+  doAssert rawText(fromJson("1e3", RawJson)) == "1000.0"
+  doAssert rawText(fromJson("1.2300", RawJson)) == "1.23"
+  doAssert rawText(fromJson("-0.0", RawJson)) == "-0.0"
+block:
   let raw = fromJson("""{"z":0,"a":1,"m":2}""", RawJson)
   doAssert rawText(raw) == """{"z":0,"a":1,"m":2}"""
 block:
