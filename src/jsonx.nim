@@ -39,12 +39,12 @@ proc escapeJson*(s: string; dst: var string) =
     if c <= '\31' or c == '"' or c == '\\':
       hasEscape = true
       break
-  dst.add("\"")
+  dst.add('"')
   if hasEscape:
     escapeJsonUnquoted(s, dst)
   else:
     dst.add(s)
-  dst.add("\"")
+  dst.add('"')
 
 proc escapeJson*(s: Stream; x: string) =
   ## Converts a string `s` to its JSON representation with quotes.
@@ -89,32 +89,32 @@ proc writeJson*(s: Stream; o: enum) =
 proc writeJson*[T](s: Stream; elements: openArray[T]) =
   ## Generic constructor for JSON data. Creates a new JArray.
   var comma = false
-  streams.write(s, "[")
+  streams.write(s, '[')
   for elem in elements:
-    if comma: streams.write(s, ",")
+    if comma: streams.write(s, ',')
     else: comma = true
     writeJson(s, elem)
-  streams.write(s, "]")
+  streams.write(s, ']')
 
 proc writeJson*[T](s: Stream; o: SomeSet[T]|set[T]) =
   var comma = false
-  streams.write(s, "[")
+  streams.write(s, '[')
   for elem in o.items:
-    if comma: streams.write(s, ",")
+    if comma: streams.write(s, ',')
     else: comma = true
     writeJson(s, elem)
-  streams.write(s, "]")
+  streams.write(s, ']')
 
 proc writeJson*[T](s: Stream; o: (Table[string, T]|OrderedTable[string, T])) =
   var comma = false
-  streams.write(s, "{")
+  streams.write(s, '{')
   for k, v in o.pairs:
-    if comma: streams.write(s, ",")
+    if comma: streams.write(s, ',')
     else: comma = true
     escapeJson(s, k)
-    streams.write(s, ":")
+    streams.write(s, ':')
     writeJson(s, v)
-  streams.write(s, "}")
+  streams.write(s, '}')
 
 proc writeJson*[T](s: Stream; o: ref T) =
   if o.isNil:
@@ -132,34 +132,34 @@ proc writeJson*[T: tuple](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject/JArray.
   when isNamedTuple(T):
     var comma = false
-    streams.write(s, "{")
+    streams.write(s, '{')
     for k, v in o.fieldPairs:
-      if comma: streams.write(s, ",")
+      if comma: streams.write(s, ',')
       else: comma = true
       escapeJson(s, k)
-      streams.write(s, ":")
+      streams.write(s, ':')
       writeJson(s, v)
-    streams.write(s, "}")
+    streams.write(s, '}')
   else:
     var comma = false
-    streams.write(s, "[")
+    streams.write(s, '[')
     for v in o.fields:
-      if comma: streams.write(s, ",")
+      if comma: streams.write(s, ',')
       else: comma = true
       writeJson(s, v)
-    streams.write(s, "]")
+    streams.write(s, ']')
 
 proc writeJson*[T: object](s: Stream; o: T) =
   ## Generic constructor for JSON data. Creates a new JObject
   var comma = false
-  streams.write(s, "{")
+  streams.write(s, '{')
   for k, v in o.fieldPairs:
-    if comma: streams.write(s, ",")
+    if comma: streams.write(s, ',')
     else: comma = true
     escapeJson(s, k)
-    streams.write(s, ":")
+    streams.write(s, ':')
     writeJson(s, v)
-  streams.write(s, "}")
+  streams.write(s, '}')
 
 # deserialization
 template expectObjectSeparator*(p: JsonParser) =
