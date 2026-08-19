@@ -111,20 +111,15 @@ proc errorMsgExpected*(my: JsonParser, e: string): string =
   result = "$1($2, $3) Error: $4" % [
     my.filename, $getLine(my), $getColumn(my), e & " expected"]
 
-proc parseEscapedUTF16(buf: cstring, pos: var int; endPos: int): int =
+proc parseEscapedUTF16*(buf: cstring, pos: var int): int =
   result = 0
   #UTF-16 escape is always 4 bytes.
   for _ in 0..3:
-    if pos >= endPos:
-      return -1
     # if char in '0' .. '9', 'a' .. 'f', 'A' .. 'F'
     if handleHexChar(buf[pos], result):
       inc(pos)
     else:
       return -1
-
-proc parseEscapedUTF16*(buf: cstring, pos: var int): int {.inline.} =
-  parseEscapedUTF16(buf, pos, high(int))
 
 proc addSpan(dst: var string; src: string; startPos, endPos: int) {.inline.} =
   let n = endPos - startPos
@@ -158,6 +153,9 @@ proc parseString(my: var JsonParser): TokKind =
       addSpan(my.a, my.buf, spanStart, pos)
       if my.rawStringLiterals:
         add(my.a, '\\')
+      if pos + 1 >= my.buf.len:
+        result = tkError
+        break
       case my.buf[pos + 1]
       of '\\', '"', '\'', '/':
         add(my.a, my.buf[pos + 1])
@@ -184,18 +182,21 @@ proc parseString(my: var JsonParser): TokKind =
         if my.rawStringLiterals:
           add(my.a, 'u')
         inc(pos, 2)
+        if pos + 4 > my.buf.len:
+          result = tkError
+          break
         var pos2 = pos
-        var r = parseEscapedUTF16(cstring(my.buf), pos, my.buf.len)
+        var r = parseEscapedUTF16(cstring(my.buf), pos)
         if r < 0:
           result = tkError
           break
         # Deal with surrogates
         if (r and 0xfc00) == 0xd800:
-          if my.buf[pos] != '\\' or my.buf[pos + 1] != 'u':
+          if pos + 6 > my.buf.len or my.buf[pos] != '\\' or my.buf[pos + 1] != 'u':
             result = tkError
             break
           inc(pos, 2)
-          var s = parseEscapedUTF16(cstring(my.buf), pos, my.buf.len)
+          var s = parseEscapedUTF16(cstring(my.buf), pos)
           if (s and 0xfc00) == 0xdc00 and s > 0:
             r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
           else:
