@@ -323,8 +323,10 @@ proc parseKeyword(my: var JsonParser): TokKind =
   result = tkError
 
 proc getTok*(my: var JsonParser): TokKind =
-  setLen(my.a, 0)
-  skip(my) # skip whitespace, comments
+  if my.a.len > 0:
+    setLen(my.a, 0)
+  if my.buf[my.bufpos] <= ' ':
+    skip(my)
   case my.buf[my.bufpos]
   of '-', '.', '0'..'9':
     result = parseNumber(my)

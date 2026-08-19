@@ -25,7 +25,7 @@ when isMainModule:
   doAssert tkFloat in toks2
   doAssert toks2[^1] == tkEof
 
-  let toks3 = tokens("  true  false null ")
+  let toks3 = tokens(" \t\r\ntrue  false null ")
   doAssert toks3.len >= 4
   doAssert toks3[0] == tkTrue
   doAssert toks3[1] == tkFalse
@@ -45,3 +45,6 @@ when isMainModule:
 
   let toks7 = tokens("// comment\n1")
   doAssert tkError in toks7
+
+  let toks8 = tokens("\x01true")
+  doAssert toks8[0] == tkError
