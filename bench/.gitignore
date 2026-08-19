@@ -1,0 +1,10 @@
+deps/
+nim.cfg
+1.json
+generator
+benchmark
+benchmark_jsonx
+benchmark_jsony
+benchmark_eminim
+benchmark_jsonx_ints
+benchmark_keymatcher_vs_parseenum
