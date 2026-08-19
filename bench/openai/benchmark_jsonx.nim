@@ -1,6 +1,6 @@
 ## Benchmark jsonx on a chat-completions style payload:
 
-import std/[strutils, times, paths, os]
+import std/[strutils, times, os]
 import jsonx
 
 type
@@ -37,9 +37,11 @@ type
     choices: seq[Choice]
     usage: Usage
 
+let payloadPath = currentSourcePath().parentDir() / "openai_chat_payload.json"
+let payload = readFile(payloadPath)
+
 proc main =
-  let payloadPath = Path(currentSourcePath().parentDir() / "openai_chat_payload.json")
-  let completions = fromFile(payloadPath, seq[ChatCompletion])
+  let completions = fromJson(payload, seq[ChatCompletion])
 
   doAssert completions.len == 60_000
   var totalTokens = 0

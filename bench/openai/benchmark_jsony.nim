@@ -37,9 +37,10 @@ type
     choices: seq[Choice]
     usage: Usage
 
+let payloadPath = currentSourcePath().parentDir() / "openai_chat_payload.json"
+let payload = readFile(payloadPath)
+
 proc main =
-  let payloadPath = currentSourcePath().parentDir() / "openai_chat_payload.json"
-  let payload = readFile(payloadPath)
   let completions = fromJson(payload, seq[ChatCompletion])
 
   doAssert completions.len == 60_000

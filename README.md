@@ -357,7 +357,7 @@ nim c -r tests/test_compliance.nim
 Local benchmark dependencies (`jsony`, `eminim`) are fetched into `bench/deps` via atlas:
 `cd bench && atlas install`. The OpenAI benchmark keeps its own copy under `bench/openai/deps` (`cd bench/openai && atlas install`).
 
-Build flag: `-d:danger`, invoked as `nim c -d:danger -r <file>`. Times are the median of 3 runs and include file I/O.
+Build flag: `-d:danger`, invoked as `nim c -d:danger -r <file>`. Times are the median of 3 runs. The coordinates benchmarks include file I/O; the OpenAI benchmarks parse an in-memory payload (like a REST API body).
 
 ### Coordinates payload
 
@@ -365,12 +365,12 @@ Build flag: `-d:danger`, invoked as `nim c -d:danger -r <file>`. Times are the m
 
 | Benchmark | File | Time | vs `std/json` |
 | --- | --- | --- | --- |
-| `std/json` | `bench/benchmark.nim` | `1.672s` | 1.00x |
-| `jsonx` | `bench/benchmark_jsonx.nim` | `0.518s` | 3.23x |
-| `jsony` | `bench/benchmark_jsony.nim` | `0.495s` | 3.38x |
-| `eminim` | `bench/benchmark_eminim.nim` | `0.715s` | 2.34x |
+| `std/json` | `bench/benchmark.nim` | `1.745s` | 1.00x |
+| `jsonx` | `bench/benchmark_jsonx.nim` | `0.493s` | 3.54x |
+| `jsony` | `bench/benchmark_jsony.nim` | `0.518s` | 3.37x |
+| `eminim` | `bench/benchmark_eminim.nim` | `0.679s` | 2.57x |
 
-`bench/benchmark_jsonx_ints.nim` times pure int parsing of 1,000,000 `int64` values from an in-memory payload (no file I/O): `0.051s`.
+`bench/benchmark_jsonx_ints.nim` times pure int parsing of 1,000,000 `int64` values from an in-memory payload (no file I/O): `0.049s`.
 
 ### OpenAI API-like payload
 
@@ -378,5 +378,5 @@ Build flag: `-d:danger`, invoked as `nim c -d:danger -r <file>`. Times are the m
 
 | Benchmark | File | Time | vs `jsonx` |
 | --- | --- | --- | --- |
-| `jsonx (openai)` | `bench/openai/benchmark_jsonx.nim` | `0.217s` | 1.00x |
-| `jsony (openai)` | `bench/openai/benchmark_jsony.nim` | `0.137s` | 1.58x |
+| `jsonx (openai)` | `bench/openai/benchmark_jsonx.nim` | `0.144s` | 1.00x |
+| `jsony (openai)` | `bench/openai/benchmark_jsony.nim` | `0.103s` | 1.40x |
