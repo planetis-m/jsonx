@@ -324,6 +324,24 @@ block:
   appendRawJson(raw, p)
   doAssert raw == """prefix:{"k":[1,2,true]}"""
 block:
+  let input = """{"payload":{"plain":"hello","escapes":"\u03B1\n\t\"\\",
+    "nested":[{"array":[true,false,null]},["x",{"y":"z"}]]}}"""
+  let direct = fromJson(input, RawJsonHolder)
+  let stream = streams.open(input).fromJson(RawJsonHolder)
+  let expected = """{"plain":"hello","escapes":"α\n\t\"\\","nested":""" &
+    """[{"array":[true,false,null]},["x",{"y":"z"}]]}"""
+  doAssert rawText(direct.payload) == expected
+  doAssert rawText(stream.payload) == expected
+  doAssert fromJson("""["\uD83D\uDE00","plain"]""", seq[string]) == @["😀", "plain"]
+block:
+  doAssertRaises(JsonParsingError):
+    discard fromJson(""""\u12"""", string)
+  doAssertRaises(JsonParsingError):
+    discard fromJson("""{"payload":[1,]}""", RawJsonHolder)
+  doAssertRaises(JsonParsingError):
+    discard fromJson("""{"payload":{},"unknown":1}""", RawJsonHolder,
+      unknownFields = ufReject)
+block:
   doAssertRaises(JsonParsingError):
     discard fromJson("""{"x":[1,}""", RawJson)
 block:

@@ -42,7 +42,8 @@ type
 
 proc close*(L: var BaseLexer) =
   ## closes the base lexer. This closes `L`'s associated stream too.
-  streams.close(L.input)
+  if L.input != nil:
+    streams.close(L.input)
 
 proc readDataStrLL(s: Stream, buf: var string, r: Slice[int]): int =
   if r.a < 0 or r.b < r.a:
@@ -149,6 +150,21 @@ proc open*(L: var BaseLexer, input: Stream, bufLen: int = 8192;
   fillBuffer(L)
   skipUtf8Bom(L)
 
+proc open*(L: var BaseLexer, input: string) =
+  ## Initializes a lexer over an in-memory string without copying it into a
+  ## refill buffer. Nim strings are NUL-terminated, so the parser can use the
+  ## terminator as its ordinary end marker.
+  L.input = nil
+  L.bufpos = 0
+  L.offsetBase = 0
+  L.refillChars = NewLines
+  L.buf = input
+  L.sentinel = input.len
+  L.lineStart = 0
+  L.lineNumber = 1
+  if input.len >= 3:
+    skipUtf8Bom(L)
+
 proc getColNumber*(L: BaseLexer, pos: int): int =
   ## retrieves the current column.
   result = abs(pos - L.lineStart)
@@ -158,7 +174,7 @@ proc getCurrentLine*(L: BaseLexer, marker: bool = true): string =
   var i: int
   result = ""
   i = L.lineStart
-  while not (L.buf[i] in {'\c', '\L', EndOfFile}):
+  while i < L.sentinel and L.buf[i] notin {'\c', '\L', EndOfFile}:
     add(result, L.buf[i])
     inc(i)
   add(result, "\n")

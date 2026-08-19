@@ -34,8 +34,16 @@ proc escapeJsonUnquoted(x: string; dst: var string) =
 proc escapeJson*(s: string; dst: var string) =
   ## Converts a string `s` to its JSON representation with quotes.
   ## Appends to `result`.
+  var hasEscape = false
+  for c in s:
+    if c <= '\31' or c == '"' or c == '\\':
+      hasEscape = true
+      break
   dst.add("\"")
-  escapeJsonUnquoted(s, dst)
+  if hasEscape:
+    escapeJsonUnquoted(s, dst)
+  else:
+    dst.add(s)
   dst.add("\"")
 
 proc escapeJson*(s: Stream; x: string) =
@@ -639,11 +647,21 @@ proc fromJson*[T](s: Stream, dst: var T;
   finally:
     close(p)
 
+proc fromString[T](input: string; dst: var T;
+                   unknownFields: UnknownFieldPolicy) {.inline.} =
+  var p: JsonParser
+  open(p, input, "unknown file")
+  try:
+    discard getTok(p)
+    readJson(dst, p, unknownFields)
+    eat(p, tkEof)
+  finally:
+    close(p)
+
 proc fromJson*[T](input: string, t: typedesc[T];
                   unknownFields = ufSkip): T =
   ## Unmarshals the specified string into the type specified.
-  let s = streams.open(input)
-  result = fromJson(s, t, unknownFields)
+  fromString(input, result, unknownFields)
 
 proc fromJson*[T](input: RawJson, t: typedesc[T];
                   unknownFields = ufSkip): T {.inline.} =
@@ -652,8 +670,7 @@ proc fromJson*[T](input: RawJson, t: typedesc[T];
 proc fromJson*[T](input: string, dst: var T;
                   unknownFields = ufSkip) =
   ## Unmarshals the specified string into the location specified.
-  let s = streams.open(input)
-  fromJson(s, dst, unknownFields)
+  fromString(input, dst, unknownFields)
 
 proc fromJson*[T](input: RawJson, dst: var T;
                   unknownFields = ufSkip) {.inline.} =

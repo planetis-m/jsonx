@@ -71,6 +71,14 @@ proc open*(my: var JsonParser, input: Stream, filename: string;
   my.a = ""
   my.rawStringLiterals = rawStringLiterals
 
+proc open*(my: var JsonParser, input: string, filename: string;
+           rawStringLiterals = false) =
+  ## Initializes a parser directly over an in-memory JSON document.
+  lexbase.open(my, input)
+  my.filename = filename
+  my.a = ""
+  my.rawStringLiterals = rawStringLiterals
+
 proc close*(my: var JsonParser) {.inline.} =
   ## closes the parser `my` and its associated input stream.
   lexbase.close(my)
@@ -103,15 +111,20 @@ proc errorMsgExpected*(my: JsonParser, e: string): string =
   result = "$1($2, $3) Error: $4" % [
     my.filename, $getLine(my), $getColumn(my), e & " expected"]
 
-proc parseEscapedUTF16*(buf: cstring, pos: var int): int =
+proc parseEscapedUTF16(buf: cstring, pos: var int; endPos: int): int =
   result = 0
   #UTF-16 escape is always 4 bytes.
   for _ in 0..3:
+    if pos >= endPos:
+      return -1
     # if char in '0' .. '9', 'a' .. 'f', 'A' .. 'F'
     if handleHexChar(buf[pos], result):
       inc(pos)
     else:
       return -1
+
+proc parseEscapedUTF16*(buf: cstring, pos: var int): int {.inline.} =
+  parseEscapedUTF16(buf, pos, high(int))
 
 proc addSpan(dst: var string; src: string; startPos, endPos: int) {.inline.} =
   let n = endPos - startPos
@@ -121,6 +134,8 @@ proc addSpan(dst: var string; src: string; startPos, endPos: int) {.inline.} =
   setLen(dst, oldLen + n)
   copyMem(addr dst[oldLen], addr src[startPos], n)
 
+# Both lexer modes provide a NUL EOF sentinel for token scanning.
+{.push boundChecks: off.}
 proc parseString(my: var JsonParser): TokKind =
   result = tkString
   var pos = my.bufpos + 1
@@ -143,9 +158,9 @@ proc parseString(my: var JsonParser): TokKind =
       addSpan(my.a, my.buf, spanStart, pos)
       if my.rawStringLiterals:
         add(my.a, '\\')
-      case my.buf[pos+1]
+      case my.buf[pos + 1]
       of '\\', '"', '\'', '/':
-        add(my.a, my.buf[pos+1])
+        add(my.a, my.buf[pos + 1])
         inc(pos, 2)
       of 'b':
         add(my.a, '\b')
@@ -170,22 +185,25 @@ proc parseString(my: var JsonParser): TokKind =
           add(my.a, 'u')
         inc(pos, 2)
         var pos2 = pos
-        var r = parseEscapedUTF16(cstring(my.buf), pos)
+        var r = parseEscapedUTF16(cstring(my.buf), pos, my.buf.len)
         if r < 0:
+          result = tkError
           break
         # Deal with surrogates
         if (r and 0xfc00) == 0xd800:
-          if my.buf[pos] != '\\' or my.buf[pos+1] != 'u':
+          if my.buf[pos] != '\\' or my.buf[pos + 1] != 'u':
+            result = tkError
             break
           inc(pos, 2)
-          var s = parseEscapedUTF16(cstring(my.buf), pos)
+          var s = parseEscapedUTF16(cstring(my.buf), pos, my.buf.len)
           if (s and 0xfc00) == 0xdc00 and s > 0:
             r = 0x10000 + (((r - 0xd800) shl 10) or (s - 0xdc00))
           else:
+            result = tkError
             break
         if my.rawStringLiterals:
           let length = pos - pos2
-          for i in 1 .. length:
+          for _ in 1 .. length:
             if my.buf[pos2] in {'0'..'9', 'A'..'F', 'a'..'f'}:
               add(my.a, my.buf[pos2])
               inc pos2
@@ -272,21 +290,24 @@ proc parseNumber(my: var JsonParser): TokKind {.inline.} =
 
 proc parseKeyword(my: var JsonParser): TokKind =
   let pos = my.bufpos
+  let inputEnd = my.buf.len
   case my.buf[pos]
   of 'n':
-    if my.buf[pos + 1] == 'u' and my.buf[pos + 2] == 'l' and
-       my.buf[pos + 3] == 'l' and my.buf[pos + 4] notin IdentChars:
+    if pos + 4 <= inputEnd and my.buf[pos + 1] == 'u' and
+        my.buf[pos + 2] == 'l' and my.buf[pos + 3] == 'l' and
+        my.buf[pos + 4] notin IdentChars:
       my.bufpos = pos + 4
       return tkNull
   of 't':
-    if my.buf[pos + 1] == 'r' and my.buf[pos + 2] == 'u' and
-       my.buf[pos + 3] == 'e' and my.buf[pos + 4] notin IdentChars:
+    if pos + 4 <= inputEnd and my.buf[pos + 1] == 'r' and
+        my.buf[pos + 2] == 'u' and my.buf[pos + 3] == 'e' and
+        my.buf[pos + 4] notin IdentChars:
       my.bufpos = pos + 4
       return tkTrue
   of 'f':
-    if my.buf[pos + 1] == 'a' and my.buf[pos + 2] == 'l' and
-       my.buf[pos + 3] == 's' and my.buf[pos + 4] == 'e' and
-       my.buf[pos + 5] notin IdentChars:
+    if pos + 5 <= inputEnd and my.buf[pos + 1] == 'a' and
+        my.buf[pos + 2] == 'l' and my.buf[pos + 3] == 's' and
+        my.buf[pos + 4] == 'e' and my.buf[pos + 5] notin IdentChars:
       my.bufpos = pos + 5
       return tkFalse
   else:
@@ -332,6 +353,7 @@ proc getTok*(my: var JsonParser): TokKind =
     inc(my.bufpos)
     result = tkError
   my.tok = result
+{.pop.}
 
 proc raiseParseErr*(p: JsonParser, msg: string) {.noinline, noreturn.} =
   ## raises an `EJsonParsingError` exception.
